@@ -6,6 +6,9 @@ import {
 let nextUid = 1;
 const uid = () => `c${nextUid++}`;
 
+// After loading a save, keep new card ids clear of the loaded ones.
+export function ensureUidAbove(n) { nextUid = Math.max(nextUid, n + 1); }
+
 const sameSet = (a = [], b = []) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
 
 export function findRecipe({ colors, inkMat, cardMat, enchants = [] }) {

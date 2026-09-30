@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { craftCard, validateBlueprint, findRecipe } from '../js/crafting.js';
 import { createCombat, playCard, endTurn } from '../js/combat.js';
-import { createRun, craftIntoDeck, salvageCard, refine, reinscribe, mend, descend, burnCard, resurface } from '../js/run.js';
+import { createRun, craftIntoDeck, salvageCard, refine, reinscribe, mend, descend, burnCard, resurface, gainRelic as gainRelicFor, applyRewards, serializeRun, deserializeRun } from '../js/run.js';
 import { generateRegion, findPath, step, isFloor, objectAt, lightRadius } from '../js/world.js';
 import { RECIPES, REGIONS } from '../js/data.js';
 
@@ -284,4 +284,94 @@ test('floors place their events', () => {
   }
   assert.ok(events >= 50);
   assert.equal(REGIONS.length, 4);
+});
+
+test('ink reactions fire between inscribed cards of different inks', async () => {
+  const { reactionFor } = await import('../js/combat.js');
+  assert.equal(reactionFor(['red'], ['white']), 'red+white');
+  assert.equal(reactionFor(['red'], ['red']), null);
+  assert.equal(reactionFor(null, ['blue', 'red']), 'blue+red');
+  const run = createRun(2);
+  Object.assign(run.inventory, { color_red: 2, color_white: 2, color_black: 1, mat_wood: 3, ink_charcoal: 3 });
+  const { card: ward } = craftIntoDeck(run, { colors: ['white'], inkMat: 'charcoal', cardMat: 'wood' });
+  const { card: flame } = craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'wood' });
+  const c = createCombat(run, ['grimoire'], seq(0.99));
+  c.player.energy = 9;
+  c.hand.push(ward); playCard(c, ward.uid);            // 4 Block
+  const hp = c.enemies[0].hp;
+  c.hand.push(flame); playCard(c, flame.uid);          // 5 damage, then Brand: half of 4 Block
+  assert.equal(c.lastReaction.name, 'Brand');
+  assert.equal(c.enemies[0].hp, hp - 5 - 2);
+  // Starter cards neither react nor break a chain.
+  const strike = run.deck.find(k => k.starter === 'strike');
+  c.hand.push(strike); playCard(c, strike.uid);
+  assert.equal(c.lastReaction.n, 1);
+  assert.deepEqual(c.lastColors, ['red']);
+});
+
+test('relics change the rules', () => {
+  const run = createRun(4);
+  gainRelicFor(run, 'locket');
+  assert.equal(run.maxHp, 70);
+  gainRelicFor(run, 'bell');
+  gainRelicFor(run, 'needle');
+  gainRelicFor(run, 'prism');
+  gainRelicFor(run, 'inkwell');
+  const c = createCombat(run, ['grimoire'], seq(0.99));
+  assert.equal(c.enemies[0].weak, 1);
+  c.enemies[0].block = 50;
+  const strike = run.deck.find(k => k.starter === 'strike');
+  c.hand.push(strike);
+  const hp = c.enemies[0].hp;
+  playCard(c, strike.uid);
+  assert.equal(c.enemies[0].hp, hp - 5); // needle: ignores Block
+  assert.equal(c.enemies[0].block, 50);
+  Object.assign(run.inventory, { color_red: 1, mat_paper: 1, ink_blood: 1 });
+  gainRelicFor(run, 'thimble');
+  const { card } = craftIntoDeck(run, { colors: ['red'], inkMat: 'blood', cardMat: 'paper' });
+  assert.equal(card.durability, 5);
+  const before = run.hp;
+  c.player.energy = 9;
+  c.hand.push(card); playCard(c, card.uid);
+  assert.equal(run.hp, before - 2); // inkwell: blood costs 1 less
+  run.hp = 40;
+  gainRelicFor(run, 'candle');
+  const rewards = { items: [], gold: 0 };
+  applyRewards(run, rewards);
+  assert.equal(rewards.healed, 4);
+});
+
+test('the Moth Lantern halves oil use', () => {
+  const run = createRun(5);
+  gainRelicFor(run, 'mothlantern');
+  const w = run.world;
+  for (let i = 0; i < 100; i++) {
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => isFloor(w, w.px + dx, w.py + dy) && !objectAt(w, w.px + dx, w.py + dy));
+    step(w, run, ...dirs[i % dirs.length], () => 0.99);
+  }
+  assert.equal(run.oil, 90);
+  assert.ok(run.dread > 100);
+});
+
+test('a run survives saving and loading', () => {
+  const run = createRun(9);
+  Object.assign(run.inventory, { color_red: 1, mat_stone: 1 });
+  craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'stone' });
+  gainRelicFor(run, 'dice');
+  run.world.objects[3].gone = true;
+  const text = serializeRun(run, { log: ['hello'], eventObjId: 7 });
+  const { run: back, resume } = deserializeRun(text);
+  assert.equal(back.deck.length, run.deck.length);
+  assert.equal(back.deck.at(-1).durability, Infinity);
+  assert.equal(back.deck[0].durability, Infinity);
+  assert.ok(back.grimoire instanceof Set);
+  assert.ok(back.world.tiles instanceof Uint8Array);
+  assert.deepEqual(Array.from(back.world.seen), Array.from(run.world.seen));
+  assert.deepEqual(back.relics, ['dice']);
+  assert.equal(back.world.objects[3].gone, true);
+  assert.deepEqual(resume, { log: ['hello'], eventObjId: 7 });
+  // Cards made after loading never reuse an id.
+  Object.assign(back.inventory, { color_red: 1, mat_paper: 1, ink_charcoal: 1 });
+  const { card } = craftIntoDeck(back, { colors: ['red'], inkMat: 'charcoal', cardMat: 'paper' });
+  assert.ok(!back.deck.slice(0, -1).some(k => k.uid === card.uid));
 });

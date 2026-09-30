@@ -26,6 +26,9 @@ Opening `index.html` straight from disk won't work, because browsers block JavaS
 - **Monster parts are enchantments** (Moth Wing = Swift, Hound Fang = Leech, and so on).
 - **Durability:** paper and wood cards wear out across the run. Stone, silver and gold are permanent.
 - **Eleven hidden recipes**, recorded in a Grimoire that is saved in your browser and carries over between runs.
+- **Ink reactions:** cast inscribed cards of different inks back to back to set off Storm, Brand, Hexfire and seven more.
+- **Relics:** ten passive trinkets from elites, reliquaries and the merchant.
+- **Autosave:** close the tab and pick up where you left off from the title screen.
 - **Random events** with choices: Candle Shrine, Trapped Scribe, Ink Well, Hanged Lanterns.
 - **Animation and synthesized sound:** smooth movement, hit effects, floating numbers, and a per-floor ambient drone. Toggle sound in the top bar.
 

@@ -137,6 +137,14 @@ const SFX = {
   lose() {
     [392, 349, 311, 262].forEach((f, i) => tone({ freq: f, type: 'triangle', dur: 0.8, vol: 0.1, at: i * 0.2 }));
   },
+  react() {
+    [784, 988, 1175].forEach((f, i) => tone({ freq: f, type: 'sine', dur: 0.35, vol: 0.07, at: i * 0.03 }));
+    hiss({ dur: 0.25, vol: 0.08, freq: 3000, to: 6000, q: 4 });
+  },
+  relic() {
+    [587, 740, 880, 1175].forEach((f, i) => tone({ freq: f, type: 'triangle', dur: 0.7, vol: 0.08, at: i * 0.08 }));
+    tone({ freq: 147, type: 'sine', dur: 0.9, vol: 0.12 });
+  },
   click() {
     tone({ freq: 1400, type: 'sine', dur: 0.03, vol: 0.04 });
   },

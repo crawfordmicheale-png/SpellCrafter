@@ -52,3 +52,15 @@ export function loadSoundPref(store = storage()) {
 export function saveSoundPref(on, store = storage()) {
   try { store?.setItem(SOUND_KEY, on ? 'on' : 'off'); } catch { /* storage unavailable */ }
 }
+
+// The run in progress, so a closed tab can be continued.
+const RUN_KEY = 'spellcrafter.run.v1';
+export function saveRunText(text, store = storage()) {
+  try { store?.setItem(RUN_KEY, text); } catch { /* storage unavailable */ }
+}
+export function loadRunText(store = storage()) {
+  try { return store?.getItem(RUN_KEY) || null; } catch { return null; }
+}
+export function clearRun(store = storage()) {
+  try { store?.removeItem(RUN_KEY); } catch { /* storage unavailable */ }
+}
