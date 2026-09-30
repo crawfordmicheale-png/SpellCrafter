@@ -2,6 +2,17 @@
 
 **Genre:** Single-player roguelike deckbuilder (digital)
 **Hook:** You don't draft cards, you *craft* them. Every spell in your deck is built from ingredients you collect over a run.
+**Setting:** Dark fantasy. Card crafting *is* the magic system.
+
+## Premise
+
+The old gods wrote the world into being. When they died, their pens fell to the rest of us.
+
+You are an **Inkbinder** (working title), a mage whose magic is writing. What you inscribe on a card becomes true for as long as the card holds together. Ink is mixed from ash, silver, gold and blood; cards are cut from paper, wood, stone and precious metal. Every spell wears its page down, and the strongest inks take something from you.
+
+Somewhere past the chapel ruins, the first book, the **Unbound Grimoire**, has woken. It wants a new hand to hold it.
+
+Other names considered for the player class: Glyphwright, Scrivener, Hexscribe, Folio Mage, Cardwright.
 
 ---
 
@@ -67,9 +78,9 @@ Every crafted card needs four components:
 |---|---|---|---|---|
 | Paper | 0 | 3 uses | 0 | Burns after its uses run out |
 | Wood | 1 | 8 uses | 1 | — |
-| Stone | 2 | Permanent | 1 | **Heavy:** can't be discarded or destroyed by enemies |
+| Stone | 2 | Permanent | 1 | **Heavy:** x1.5 power |
 | Silver | 1 | Permanent | 2 | — |
-| Gold | 1 | Permanent | 3 | +1 gold every time it's played |
+| Gold | 1 | Permanent | 3 | +2 gold every time it's played |
 
 > **Durability** tracks uses across the whole run, not per fight. When a card breaks you get a salvage roll (see §4.3).
 > This constant wear is what drives the crafting loop: cheap cards come and go, and permanent cards become heirlooms.
@@ -128,7 +139,7 @@ Some exact combinations make **named spells** with unique effects beyond the for
 |---|---|
 | Black + Blood + Gold material | **Pact:** Deal 20, lose 5 max HP permanently |
 | Blue + Silver + Silver material | **Clarity:** Draw 3, your next card costs 0 |
-| Red + Charcoal + Paper + Volatile | **Kindling:** Deal 12 to ALL enemies |
+| Red + Blood + Paper | **Kindling:** Deal 10 to ALL enemies (still costs 3 HP) |
 | Green + Gold + Wood | **Evergreen:** Heal 5; this card never loses durability |
 
 - Recipes are hidden until you craft them the first time, then saved to a **Grimoire** that persists across runs.
