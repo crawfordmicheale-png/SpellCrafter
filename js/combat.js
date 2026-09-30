@@ -10,13 +10,15 @@ export function shuffle(arr, rng = Math.random) {
 }
 
 // A fight. Mutates `run` (hp, maxHp, gold, deck, inventory) as things happen.
-export function createCombat(run, enemyKeys, rng = Math.random) {
+export function createCombat(run, enemyKeys, rng = Math.random, { hpMult = 1 } = {}) {
   const c = {
     run, rng,
     enemies: enemyKeys.map(key => {
       const e = ENEMIES[key];
-      return { key, name: e.name, hp: e.hp, maxHp: e.hp, block: 0, poison: 0, weak: 0, strength: 0, moveIdx: 0 };
+      const hp = Math.round(e.hp * hpMult);
+      return { key, name: e.name, hp, maxHp: hp, block: 0, poison: 0, weak: 0, strength: 0, moveIdx: 0 };
     }),
+    hunger: {}, // card uid -> times cast this fight (Hungering)
     player: { block: 0, energy: 0, weak: 0, poison: 0, nextFree: false },
     drawPile: shuffle([...run.deck], rng),
     hand: [], discard: [], exhaust: [],
@@ -31,6 +33,7 @@ export function createCombat(run, enemyKeys, rng = Math.random) {
 }
 
 const log = (c, msg) => c.log.push(msg);
+const GROWS = new Set(['damage', 'damageAll', 'block', 'heal', 'poison']);
 const alive = c => c.enemies.filter(e => e.hp > 0);
 
 export function currentMove(enemy) {
@@ -123,9 +126,11 @@ export function playCard(c, cardUid, targetIdx = 0) {
   if (card.hpCost) loseHp(c, card.hpCost, 'blood price');
 
   let dealtTotal = 0, killed = false;
+  const growth = card.enchants.includes('hungering') ? 2 * (c.hunger[card.uid] || 0) : 0;
   const apply = (scale) => {
     for (const e of card.effects) {
-      const n = scale === 1 ? e.amount : Math.max(1, Math.round(e.amount * scale));
+      const base = e.amount + (GROWS.has(e.type) ? growth : 0);
+      const n = scale === 1 ? base : Math.max(1, Math.round(base * scale));
       switch (e.type) {
         case 'damage': {
           if (!target || target.hp <= 0) target = alive(c)[0];
@@ -160,6 +165,7 @@ export function playCard(c, cardUid, targetIdx = 0) {
   apply(1);
   if (card.enchants.includes('echo')) { log(c, `${card.name} echoes.`); apply(0.5); }
 
+  if (card.enchants.includes('hungering')) c.hunger[card.uid] = (c.hunger[card.uid] || 0) + 1;
   if (card.enchants.includes('leech') && dealtTotal > 0) {
     const heal = Math.floor(dealtTotal / 4);
     c.run.hp = Math.min(c.run.maxHp, c.run.hp + heal);

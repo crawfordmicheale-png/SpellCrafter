@@ -1,11 +1,15 @@
 import {
-  INK_COLORS, INK_MATERIALS, CARD_MATERIALS, ENCHANTMENTS, INGREDIENTS, RECIPES, RUN_PATH, ENEMIES, REPAIR_PRICE,
+  INK_COLORS, INK_MATERIALS, CARD_MATERIALS, ENCHANTMENTS, INGREDIENTS, RECIPES, ENEMIES, REPAIR_PRICE,
+  REGIONS, REFINING, RAW_MATERIALS,
 } from './data.js';
 import { craftCard, validateBlueprint, describeCard, cardComponents } from './crafting.js';
 import { createCombat, playCard, endTurn, canPlay, effectiveCost, currentMove } from './combat.js';
 import {
-  createRun, currentNode, advance, craftIntoDeck, salvageCard, rollRewards, applyRewards, rollShop,
+  createRun, currentRegion, descend, craftIntoDeck, salvageCard, rollRewards, applyRewards, rollShop,
+  refine, canRefine, reinscribe, mend, rest, scavenge, openChest,
 } from './run.js';
+import { step, findPath, objectAt, BLOCKING } from './world.js';
+import { createExploreView, objectName } from './explore-view.js';
 
 const app = document.getElementById('app');
 const bar = document.getElementById('bar');
@@ -13,16 +17,32 @@ const bar = document.getElementById('bar');
 let run = null;
 let screen = 'title';
 let combat = null;
+let fightCtx = null; // { kind: 'random' | 'elite' | 'boss', obj }
 let target = 0;
 let rewards = null;
-let shop = null;
+let desk = null;      // the desk object being used
+let merchant = null;  // the merchant object being visited
+let benchTab = 'inscribe';
 let blueprint = null;
-let notice = null; // { text, tone }
+let notice = null;    // { text, tone }
 let salvageMode = false;
+let exploreLog = [];
+let view = null;      // canvas view while exploring
+let walkPath = null;
+let walkTimer = 0;
+let lastStepAt = 0;
+let standingOn = null;
 
+const STEP_MS = 85;
 const emptyBlueprint = () => ({ cardMat: null, colors: [], inkMat: null, enchants: [] });
+const itemName = id => INGREDIENTS[id].name;
+const listItems = ids => {
+  const counts = {};
+  for (const id of ids) counts[id] = (counts[id] || 0) + 1;
+  return Object.entries(counts).map(([id, n]) => `${itemName(id)}${n > 1 ? ` ×${n}` : ''}`).join(', ');
+};
 
-// ---------- helpers ----------
+// ---------- card rendering ----------
 
 const pips = n => Array.from({ length: n }, () => '<i></i>').join('');
 
@@ -86,6 +106,190 @@ function bars(cur, max, cls = '') {
   return `<span class="hpbar ${cls}"><span style="width:${pct}%"></span><em>${cur} / ${max}</em></span>`;
 }
 
+// ---------- top bar ----------
+
+function renderBar() {
+  if (!run) { bar.hidden = true; return; }
+  bar.hidden = false;
+  const depth = REGIONS.map((r, i) => `<li class="${i < run.regionIdx ? 'done' : i === run.regionIdx ? 'here' : ''}${i === REGIONS.length - 1 ? ' k-boss' : ''}" title="${r.name}"></li>`).join('');
+  bar.innerHTML = `
+    <span class="brand">SpellCrafter</span>
+    <span class="where"><ol class="path" aria-label="Depth">${depth}</ol><span>${currentRegion(run).name}</span></span>
+    <span class="stats">
+      <span class="stat hp" title="Health">HP <b>${run.hp}/${run.maxHp}</b></span>
+      <span class="stat gold" title="Gold">Gold <b>${run.gold}</b></span>
+      <span class="stat deck" title="Cards in deck">Deck <b>${run.deck.length}</b></span>
+      <span class="stat dread" title="Dread rises as you wander. Monsters find you more often.">Dread <b>${run.dread}</b></span>
+    </span>`;
+}
+
+// ---------- title ----------
+
+function renderTitle() {
+  app.innerHTML = `
+  <section class="title-screen">
+    <h1>SpellCrafter</h1>
+    <p class="lede">The old gods wrote the world into being. When they died, their pens fell to the rest of us.</p>
+    <p>You are an <strong>Inkbinder</strong>. What you write on a card becomes true, for as long as the card holds together.
+    Ink is mixed from ash, silver, gold and blood. Cards are cut from paper, wood, stone and precious metal.
+    Every spell you cast wears its page down.</p>
+    <p>Three floors down, beneath the chapel, the first book has woken. It wants a new hand to hold it.</p>
+    <ul class="howto">
+      <li><b>Explore</b> by tapping a tile, or with WASD or the arrow keys. Your lantern only reaches so far.</li>
+      <li><b>Scavenge</b> raw materials. The longer you wander, the more Dread builds, and the more often things find you.</li>
+      <li><b>Refine and craft</b> at writing desks. Monster parts become enchantments.</li>
+    </ul>
+    <button class="primary" data-act="begin">Descend into the chapel</button>
+  </section>`;
+}
+
+// ---------- explore ----------
+
+function mountExplore() {
+  const region = currentRegion(run);
+  app.innerHTML = `
+  <section class="explore">
+    <div class="mapwrap">
+      <canvas id="map" aria-label="Map of ${region.name}. Use arrow keys or WASD to move."></canvas>
+      <span class="hover" id="hover" hidden></span>
+    </div>
+    <aside class="side" id="side"></aside>
+  </section>`;
+  view?.destroy();
+  view = createExploreView(document.getElementById('map'), run.world, { onTile: walkTo, onHover: hover });
+  view.world = run.world;
+}
+
+function hover(x, y, e) {
+  const el = document.getElementById('hover');
+  if (!el) return;
+  const o = x == null ? null : objectAt(run.world, x, y);
+  if (!o || !run.world.seen[y * run.world.w + x]) { el.hidden = true; return; }
+  const r = el.parentElement.getBoundingClientRect();
+  el.textContent = objectName(o);
+  el.style.left = `${e.clientX - r.left + 12}px`;
+  el.style.top = `${e.clientY - r.top + 12}px`;
+  el.hidden = false;
+}
+
+function renderSide() {
+  const side = document.getElementById('side');
+  if (!side) return;
+  const region = currentRegion(run);
+  const raws = Object.keys(RAW_MATERIALS).filter(k => run.inventory[`raw_${k}`])
+    .map(k => `<li><span class="swatch" style="--ink:${RAW_MATERIALS[k].color}"></span>${RAW_MATERIALS[k].name}<b>${run.inventory[`raw_${k}`]}</b></li>`).join('');
+  const parts = Object.keys(ENCHANTMENTS).filter(k => run.inventory[`ench_${k}`])
+    .map(k => `<li title="${ENCHANTMENTS[k].desc}">${ENCHANTMENTS[k].part} <small>${ENCHANTMENTS[k].name}</small><b>${run.inventory[`ench_${k}`]}</b></li>`).join('');
+  const refined = Object.entries(run.inventory).filter(([id]) => /^(color|ink|mat)_/.test(id)).reduce((s, [, n]) => s + n, 0);
+  let action = '';
+  if (standingOn?.type === 'exit') {
+    const next = REGIONS[run.regionIdx + 1];
+    action = `<div class="prompt"><p>Stairs lead down into <b>${next.name}</b>. There is no coming back up.</p>
+      <button class="primary" data-act="descend">Descend</button></div>`;
+  }
+  const dreadPct = Math.min(100, run.dread / 2);
+  side.innerHTML = `
+    <h2>${region.name}</h2>
+    <p class="intro">${region.intro}</p>
+    ${action}
+    <div class="meter" title="Dread ${run.dread}"><span style="width:${dreadPct}%"></span><em>Dread ${run.dread}</em></div>
+    <ol class="elog" aria-live="polite">${exploreLog.slice(-5).map(l => `<li>${l}</li>`).join('')}</ol>
+    <div class="satchel-mini">
+      <h3 class="panel-title">Raw materials</h3>
+      <ul>${raws || '<li class="none">Nothing yet</li>'}</ul>
+      <h3 class="panel-title">Monster parts</h3>
+      <ul>${parts || '<li class="none">Nothing yet</li>'}</ul>
+      <p class="note">${refined} refined ingredients ready to craft.</p>
+    </div>
+    <ul class="legend">
+      <li><i class="lg-node"></i>Scavenge</li><li><i class="lg-desk"></i>Writing desk</li>
+      <li><i class="lg-merchant"></i>Merchant</li><li><i class="lg-elite"></i>Guardian</li><li><i class="lg-exit"></i>Stairs down</li>
+    </ul>`;
+}
+
+function logExplore(msg) {
+  exploreLog.push(msg);
+  if (exploreLog.length > 30) exploreLog.shift();
+}
+
+function walkTo(x, y) {
+  if (screen !== 'explore') return;
+  const path = findPath(run.world, x, y);
+  if (!path?.length) return;
+  walkPath = path;
+  if (!walkTimer) walkTick();
+}
+
+function walkTick() {
+  walkTimer = 0;
+  if (!walkPath?.length || screen !== 'explore') { walkPath = null; return; }
+  const [nx, ny] = walkPath.shift();
+  moveBy(nx - run.world.px, ny - run.world.py);
+  if (walkPath?.length) walkTimer = setTimeout(walkTick, STEP_MS);
+}
+
+function moveBy(dx, dy) {
+  const res = step(run.world, run, dx, dy);
+  if (res.blocked) { walkPath = null; return; }
+  standingOn = objectAt(run.world, run.world.px, run.world.py);
+  if (res.object) { walkPath = null; interact(res.object); }
+  else if (res.encounter) { walkPath = null; startFight(res.encounter, { kind: 'random' }); }
+  if (screen === 'explore') { renderSide(); renderBar(); }
+  else render();
+}
+
+function interact(obj) {
+  switch (obj.type) {
+    case 'node': {
+      const r = scavenge(run, obj);
+      logExplore(`You pick through the ${objectName(obj).toLowerCase()}: ${listItems(r.items)}.`);
+      standingOn = null;
+      break;
+    }
+    case 'chest': {
+      const r = openChest(run, obj);
+      logExplore(`The reliquary opens: ${listItems(r.items)} and ${r.gold} gold.`);
+      standingOn = null;
+      break;
+    }
+    case 'desk':
+      desk = obj; blueprint = emptyBlueprint(); benchTab = 'inscribe'; notice = null; salvageMode = false;
+      run.salvagedHere = false;
+      screen = 'bench';
+      break;
+    case 'merchant':
+      merchant = obj; merchant.stock ||= rollShop(); notice = null;
+      screen = 'shop';
+      break;
+    case 'elite':
+      startFight([obj.enemy], { kind: 'elite', obj });
+      break;
+    case 'boss':
+      startFight([obj.enemy], { kind: 'boss', obj });
+      break;
+    case 'exit':
+      logExplore('A stair winds down into the dark.');
+      break;
+  }
+}
+
+function startFight(enemies, ctx) {
+  fightCtx = { ...ctx, enemies };
+  combat = createCombat(run, enemies, Math.random, { hpMult: currentRegion(run).hpMult });
+  target = 0;
+  screen = 'fight';
+}
+
+// ---------- bench ----------
+
+function isSelected(kind, key) {
+  const bp = blueprint;
+  if (kind === 'cardMat') return bp.cardMat === key;
+  if (kind === 'inkMat') return bp.inkMat === key;
+  if (kind === 'color') return bp.colors.includes(key);
+  return bp.enchants.includes(key);
+}
+
 function ingredientCounts() {
   const counts = { ...run.inventory };
   const bp = blueprint;
@@ -97,53 +301,13 @@ function ingredientCounts() {
   return counts;
 }
 
-// ---------- top bar ----------
-
-function renderBar() {
-  if (!run) { bar.hidden = true; return; }
-  bar.hidden = false;
-  const path = RUN_PATH.map((n, i) => {
-    const state = i < run.nodeIdx ? 'done' : i === run.nodeIdx ? 'here' : '';
-    const kind = n.boss ? 'boss' : n.elite ? 'elite' : n.type;
-    return `<li class="${state} k-${kind}" title="${n.label}"><span>${n.label}</span></li>`;
-  }).join('');
-  bar.innerHTML = `
-    <span class="brand">SpellCrafter</span>
-    <ol class="path" aria-label="Your path">${path}</ol>
-    <span class="stats">
-      <span class="stat hp" title="Health">HP <b>${run.hp}/${run.maxHp}</b></span>
-      <span class="stat gold" title="Gold">Gold <b>${run.gold}</b></span>
-      <span class="stat deck" title="Cards in deck">Deck <b>${run.deck.length}</b></span>
-    </span>`;
-}
-
-// ---------- screens ----------
-
-function renderTitle() {
-  app.innerHTML = `
-  <section class="title-screen">
-    <h1>SpellCrafter</h1>
-    <p class="lede">The old gods wrote the world into being. When they died, their pens fell to the rest of us.</p>
-    <p>You are an <strong>Inkbinder</strong>. What you write on a card becomes true, for as long as the card holds together.
-    Ink is mixed from ash, silver, gold and blood. Cards are cut from paper, wood, stone and precious metal.
-    Every spell you cast wears its page down.</p>
-    <p>Somewhere past the chapel ruins, the first book has woken. It wants a new hand to hold it.</p>
-    <ul class="howto">
-      <li><b>Craft</b> at the bench: card material + ink color + ink material + enchantments.</li>
-      <li><b>Fight</b> with the deck you've built. Cheap cards break. Permanent ones are worth the price.</li>
-      <li><b>Scavenge</b> ingredients from what you kill, buy them, or salvage old cards.</li>
-    </ul>
-    <button class="primary" data-act="begin">Begin the run</button>
-  </section>`;
-}
-
-function renderBench() {
+function inscribeTab() {
   const counts = ingredientCounts();
   const groups = [
     ['cardMat', 'Card material', CARD_MATERIALS, 'mat_'],
     ['color', 'Ink color', INK_COLORS, 'color_'],
     ['inkMat', 'Ink material', INK_MATERIALS, 'ink_'],
-    ['enchant', 'Enchantments', ENCHANTMENTS, 'ench_'],
+    ['enchant', 'Enchantments (monster parts)', ENCHANTMENTS, 'ench_'],
   ];
   const satchel = groups.map(([kind, label, table, prefix]) => {
     const items = Object.keys(table).filter(k => (run.inventory[prefix + k] || 0) > 0).map(k => {
@@ -151,42 +315,28 @@ function renderBench() {
       const left = counts[id] ?? 0;
       const sel = isSelected(kind, k);
       const swatch = kind === 'color' ? `<span class="swatch" style="--ink:${INK_COLORS[k].hue}"></span>` : '';
+      const text = kind === 'enchant' ? `${ENCHANTMENTS[k].part} <small>${ENCHANTMENTS[k].name}</small>` : itemName(id);
       return `<button class="ing k-${kind} m-${k}${sel ? ' sel' : ''}" data-act="pick" data-kind="${kind}" data-key="${k}" ${left <= 0 && !sel ? 'disabled' : ''} title="${table[k].desc}">
-        ${swatch}<span>${INGREDIENTS[id].name}</span><b>${left}</b></button>`;
+        ${swatch}<span>${text}</span><b>${left}</b></button>`;
     }).join('');
-    return `<div class="group"><h3>${label}</h3><div class="ings">${items || '<em class="none">None</em>'}</div></div>`;
+    return `<div class="group"><h3>${label}</h3><div class="ings">${items || '<em class="none">None. Refine raw materials or find some.</em>'}</div></div>`;
   }).join('');
 
   const bp = blueprint;
   const slots = bp.cardMat ? CARD_MATERIALS[bp.cardMat].slots : 0;
-  const slot = (label, val, kind, key) => `<button class="slot${val ? ' filled' : ''}" data-act="unpick" data-kind="${kind}" data-key="${key || ''}" ${val ? '' : 'disabled'}>
+  const slot = (label, val, kind, key) => `<button class="slot${val ? ' filled' : ''}" data-act="pick" data-kind="${kind}" data-key="${key || ''}" ${val ? '' : 'disabled'}>
       <small>${label}</small><span>${val || 'Empty'}</span></button>`;
   const colorSlots = [0, 1].map(i => slot(i === 0 ? 'Ink color' : 'Mix a 2nd ink', bp.colors[i] && INK_COLORS[bp.colors[i]].name, 'color', bp.colors[i])).join('');
   const enchSlots = Array.from({ length: slots }, (_, i) => slot('Enchantment', bp.enchants[i] && ENCHANTMENTS[bp.enchants[i]].name, 'enchant', bp.enchants[i])).join('');
 
   const err = validateBlueprint(bp, run.inventory);
-  let preview;
-  if (!validateBlueprint(bp)) {
-    preview = cardHtml(craftCard(bp));
-  } else {
-    preview = `<div class="card ghost"><span>${err}</span></div>`;
-  }
-
-  const deck = run.deck.map(k => cardHtml(k, {
-    action: salvageMode ? `data-act="salvage" data-uid="${k.uid}"` : '',
-    extra: salvageMode ? `<span class="salv">Salvage: ${[...new Set(cardComponents(k))].map(id => INGREDIENTS[id].name).join(', ')}</span>` : '',
-  })).join('');
+  const preview = !validateBlueprint(bp) ? cardHtml(craftCard(bp)) : `<div class="card ghost"><span>${err}</span></div>`;
 
   const grimoire = RECIPES.map(r => run.grimoire.has(r.id)
-    ? `<li class="known"><b>${r.name}</b> ${r.match.colors.map(c => INK_COLORS[c].short).join(' + ')} ink, ${INK_MATERIALS[r.match.inkMat].name}, ${CARD_MATERIALS[r.match.cardMat].name}</li>`
+    ? `<li class="known"><b>${r.name}</b> ${r.match.colors.map(c => INK_COLORS[c].short).join(' + ')} ink, ${INK_MATERIALS[r.match.inkMat].name}, ${CARD_MATERIALS[r.match.cardMat].name}${r.match.enchants ? `, ${r.match.enchants.map(e => ENCHANTMENTS[e].name).join(', ')}` : ''}</li>`
     : `<li><b>Unknown spell</b> <i>${r.hint}</i></li>`).join('');
 
-  app.innerHTML = `
-  <section class="bench">
-    <header class="screen-head">
-      <h2>The Crafting Bench</h2>
-      <p>Pick ingredients from your satchel to fill the card. The preview updates as you go.</p>
-    </header>
+  return `
     <div class="bench-grid">
       <div class="panel satchel"><h3 class="panel-title">Satchel</h3>${satchel}</div>
       <div class="panel blueprint">
@@ -203,27 +353,85 @@ function renderBench() {
         <button class="primary" data-act="craft" ${err ? 'disabled' : ''}>Inscribe card</button>
       </div>
     </div>
-    ${notice ? `<p class="notice ${notice.tone || ''}" role="status">${notice.text}</p>` : ''}
-    <div class="panel grimoire"><h3 class="panel-title">Grimoire</h3><ul>${grimoire}</ul></div>
+    <div class="panel grimoire"><h3 class="panel-title">Grimoire (${run.grimoire.size} of ${RECIPES.length})</h3><ul>${grimoire}</ul></div>`;
+}
+
+function refineTab() {
+  const rows = REFINING.map(r => {
+    const err = canRefine(run, r);
+    const from = r.hpCost ? `${r.hpCost} of your HP` : Object.entries(r.from).map(([id, n]) => `${itemName(id)}${n > 1 ? ` ×${n}` : ''}`).join(' + ');
+    const to = Object.entries(r.to).map(([id, n]) => `${itemName(id)}${n > 1 ? ` ×${n}` : ''}`).join(', ');
+    const haveRaw = r.hpCost || Object.keys(r.from).some(id => run.inventory[id]);
+    if (!haveRaw) return '';
+    return `<li class="${err ? 'off' : ''}${r.hpCost ? ' bleed' : ''}">
+      <span class="from">${from}</span><span class="arrow" aria-hidden="true">→</span><span class="to">${to}</span>
+      <button data-act="refine" data-id="${r.id}" ${err ? `disabled title="${err}"` : ''}>${r.hpCost ? 'Bleed' : 'Refine'}</button></li>`;
+  }).join('');
+  const raws = Object.keys(RAW_MATERIALS).filter(k => run.inventory[`raw_${k}`])
+    .map(k => `<li><span class="swatch" style="--ink:${RAW_MATERIALS[k].color}"></span>${RAW_MATERIALS[k].name}<b>${run.inventory[`raw_${k}`]}</b></li>`).join('');
+  return `
+    <div class="refine-grid">
+      <div class="panel"><h3 class="panel-title">Raw materials</h3><ul class="rawlist">${raws || '<li class="none">You carry nothing to refine.</li>'}</ul></div>
+      <div class="panel"><h3 class="panel-title">Refining</h3>
+        <p class="note">Silver and gold can become ink, or with two of them, a card. Blood can always be had, at a price.</p>
+        <ul class="refines">${rows}</ul>
+      </div>
+    </div>`;
+}
+
+function deckTab() {
+  const enchInv = Object.keys(ENCHANTMENTS).filter(k => run.inventory[`ench_${k}`]);
+  const deck = run.deck.map(k => {
+    const btns = [];
+    if (salvageMode) btns.push(`<button data-act="salvage" data-uid="${k.uid}">Salvage</button>`);
+    else {
+      if (k.crafted && Number.isFinite(k.durability) && k.durability < k.maxDurability) {
+        const mat = `mat_${k.cardMat}`;
+        btns.push(`<button data-act="mend" data-uid="${k.uid}" ${run.inventory[mat] ? '' : `disabled title="Needs a ${itemName(mat)}"`}>Mend (1 ${itemName(mat)})</button>`);
+      }
+      if (k.crafted && k.enchants.length < CARD_MATERIALS[k.cardMat].slots) {
+        for (const e of enchInv.filter(e => !k.enchants.includes(e))) {
+          btns.push(`<button data-act="reinscribe" data-uid="${k.uid}" data-ench="${e}" title="${ENCHANTMENTS[e].desc}">+ ${ENCHANTMENTS[e].name}</button>`);
+        }
+      }
+    }
+    return `<div class="deckcard">${cardHtml(k, {
+      extra: salvageMode ? `<span class="salv">Gives one of: ${[...new Set(cardComponents(k))].map(itemName).join(', ')}</span>` : '',
+    })}<div class="cardacts">${btns.join('')}</div></div>`;
+  }).join('');
+  return `
     <div class="panel deckview">
       <div class="deckhead">
         <h3 class="panel-title">Your deck (${run.deck.length})</h3>
         <button data-act="toggleSalvage" ${run.salvagedHere ? 'disabled' : ''}>${salvageMode ? 'Cancel salvage' : run.salvagedHere ? 'Salvaged' : 'Salvage a card'}</button>
       </div>
-      ${salvageMode ? '<p class="note">Pick a card to break down. You get back one of its ingredients at random.</p>' : ''}
+      <p class="note">${salvageMode ? 'Pick a card to break down. You get back one of its ingredients at random.'
+        : 'Add monster parts to cards with a free enchantment slot. Mend worn paper and wood with the same material.'}</p>
       <div class="cards">${deck}</div>
-    </div>
-    <footer class="screen-foot"><button class="primary" data-act="leave">Leave the bench</button></footer>
+    </div>`;
+}
+
+function renderBench() {
+  const tabs = [['inscribe', 'Inscribe'], ['refine', 'Refine'], ['deck', 'Deck']]
+    .map(([id, label]) => `<button role="tab" aria-selected="${benchTab === id}" class="tab${benchTab === id ? ' on' : ''}" data-act="tab" data-tab="${id}">${label}</button>`).join('');
+  const body = benchTab === 'refine' ? refineTab() : benchTab === 'deck' ? deckTab() : inscribeTab();
+  app.innerHTML = `
+  <section class="bench">
+    <header class="screen-head bench-head">
+      <div>
+        <h2>The Writing Desk</h2>
+        <p>A candle, a blotter, and a knife for cutting pages.</p>
+      </div>
+      <button data-act="rest" ${desk.rested || run.hp >= run.maxHp ? 'disabled' : ''} title="Heal 30% of your max HP and calm your Dread. Once per desk.">${desk.rested ? 'Rested' : 'Rest by the candle'}</button>
+    </header>
+    <div class="tabs" role="tablist">${tabs}</div>
+    ${notice ? `<p class="notice ${notice.tone || ''}" role="status">${notice.text}</p>` : ''}
+    ${body}
+    <footer class="screen-foot"><button class="primary" data-act="toMap">Back to exploring</button></footer>
   </section>`;
 }
 
-function isSelected(kind, key) {
-  const bp = blueprint;
-  if (kind === 'cardMat') return bp.cardMat === key;
-  if (kind === 'inkMat') return bp.inkMat === key;
-  if (kind === 'color') return bp.colors.includes(key);
-  return bp.enchants.includes(key);
-}
+// ---------- fight, rewards, shop, end ----------
 
 function renderFight() {
   const c = combat;
@@ -246,10 +454,11 @@ function renderFight() {
 
   const mana = Array.from({ length: Math.max(run.energy, c.player.energy) }, (_, i) => `<i class="${i < c.player.energy ? 'on' : ''}"></i>`).join('');
   const recent = c.log.slice(-7).map(l => `<li>${l}</li>`).join('');
+  const title = fightCtx.kind === 'random' ? 'Something finds you in the dark' : fightCtx.kind === 'elite' ? 'A guardian bars the way' : 'The Last Library';
 
   app.innerHTML = `
   <section class="fight">
-    <p class="fight-title">${currentNode(run).label}</p>
+    <p class="fight-title">${title}</p>
     <div class="enemies">${enemies}</div>
     <div class="table">
       <div class="panel player">
@@ -262,27 +471,27 @@ function renderFight() {
       <ol class="panel log" aria-live="polite">${recent}</ol>
     </div>
     <div class="hand">${hand || '<p class="none">Your hand is empty.</p>'}</div>
-    <footer class="screen-foot"><button class="primary" data-act="endTurn">End turn</button></footer>
+    <footer class="screen-foot"><span class="keyhint">E ends your turn</span><button class="primary" data-act="endTurn">End turn</button></footer>
   </section>`;
 }
 
 function renderRewards() {
   const r = rewards;
-  const items = r.items.map(id => `<li class="loot r-${INGREDIENTS[id].rarity}">${INGREDIENTS[id].name}</li>`).join('');
-  const salv = (r.salvaged || []).map(id => `<li class="loot">${INGREDIENTS[id].name} <small>(from a broken card)</small></li>`).join('');
+  const items = r.items.map(id => `<li class="loot r-${INGREDIENTS[id].rarity}">${itemName(id)}${INGREDIENTS[id].kind === 'enchant' ? ` <small>${ENCHANTMENTS[INGREDIENTS[id].key].name}</small>` : ''}</li>`).join('');
+  const salv = (r.salvaged || []).map(id => `<li class="loot">${itemName(id)} <small>(from a broken card)</small></li>`).join('');
   app.innerHTML = `
   <section class="rewards center">
     <h2>The page falls silent</h2>
     <p>You search what's left.</p>
     <ul class="loots">${items}${salv}${r.gold ? `<li class="loot gold">${r.gold} gold</li>` : ''}</ul>
     ${!items && !salv && !r.gold ? '<p>Nothing worth keeping.</p>' : ''}
-    <button class="primary" data-act="next">Continue</button>
+    <button class="primary" data-act="toMap">Back to exploring</button>
   </section>`;
 }
 
 function renderShop() {
-  const stock = shop.map((s, i) => `<button class="ware r-${INGREDIENTS[s.id].rarity}" data-act="buy" data-idx="${i}" ${s.sold || run.gold < s.price ? 'disabled' : ''}>
-      <span>${INGREDIENTS[s.id].name}</span><small>${INGREDIENTS[s.id].rarity}</small><b>${s.sold ? 'Sold' : s.price + ' gold'}</b></button>`).join('');
+  const stock = merchant.stock.map((s, i) => `<button class="ware r-${INGREDIENTS[s.id].rarity}" data-act="buy" data-idx="${i}" ${s.sold || run.gold < s.price ? 'disabled' : ''}>
+      <span>${itemName(s.id)}</span><small>${INGREDIENTS[s.id].kind === 'raw' ? 'raw material' : INGREDIENTS[s.id].kind === 'enchant' ? ENCHANTMENTS[INGREDIENTS[s.id].key].name : INGREDIENTS[s.id].rarity}</small><b>${s.sold ? 'Sold' : s.price + ' gold'}</b></button>`).join('');
   const worn = run.deck.filter(k => Number.isFinite(k.durability) && k.durability < k.maxDurability);
   const repairs = worn.map(k => cardHtml(k, {
     action: `data-act="repair" data-uid="${k.uid}"`, disabled: run.gold < REPAIR_PRICE,
@@ -299,7 +508,7 @@ function renderShop() {
     <div class="panel"><h3 class="panel-title">Repairs</h3>
       ${repairs ? `<div class="cards">${repairs}</div>` : '<p class="none">None of your cards are worn.</p>'}
     </div>
-    <footer class="screen-foot"><button class="primary" data-act="next">Move on</button></footer>
+    <footer class="screen-foot"><button class="primary" data-act="toMap">Back to exploring</button></footer>
   </section>`;
 }
 
@@ -309,7 +518,7 @@ function renderEnd(won) {
     <h2>${won ? 'The Grimoire is closed' : 'Your ink runs dry'}</h2>
     <p>${won
       ? 'The first book falls still in your hands. Its pages are blank now, waiting. You could write anything.'
-      : `You fell at ${currentNode(run).label}. Another Inkbinder will find your cards in the dust.`}</p>
+      : `You fell in ${currentRegion(run).name}. Another Inkbinder will find your cards in the dust.`}</p>
     <p class="note">Cards in deck: ${run.deck.length} · Spells discovered: ${run.grimoire.size} of ${RECIPES.length}</p>
     <button class="primary" data-act="restart">Begin a new run</button>
   </section>`;
@@ -317,8 +526,13 @@ function renderEnd(won) {
 
 function render() {
   renderBar();
+  if (screen !== 'explore' && view) { view.destroy(); view = null; }
   switch (screen) {
     case 'title': renderTitle(); break;
+    case 'explore':
+      if (!view || view.world !== run.world || !document.getElementById('map')) mountExplore();
+      renderSide();
+      break;
     case 'bench': renderBench(); break;
     case 'fight': renderFight(); break;
     case 'rewards': renderRewards(); break;
@@ -330,33 +544,46 @@ function render() {
 
 // ---------- flow ----------
 
-function enterNode() {
-  const node = currentNode(run);
-  notice = null;
-  salvageMode = false;
-  if (!node) { screen = 'won'; return; }
-  if (node.type === 'bench') { blueprint = emptyBlueprint(); screen = 'bench'; }
-  else if (node.type === 'shop') { shop = rollShop(); screen = 'shop'; }
-  else if (node.type === 'fight') { combat = createCombat(run, node.enemies); target = 0; screen = 'fight'; }
-}
-
 function afterCombatAction() {
   if (!combat.over) {
     if (combat.enemies[target]?.hp <= 0) target = combat.enemies.findIndex(e => e.hp > 0);
     return;
   }
   if (combat.over === 'lost') { screen = 'lost'; return; }
-  const node = currentNode(run);
-  if (node.boss) { screen = 'won'; return; }
-  rewards = rollRewards(node.enemies, node);
+  if (fightCtx.kind === 'boss') { screen = 'won'; return; }
+  if (fightCtx.obj) fightCtx.obj.gone = true;
+  rewards = rollRewards(fightCtx.enemies, { elite: fightCtx.kind === 'elite' });
   rewards.salvaged = combat.salvaged;
   applyRewards(run, rewards);
+  logExplore(fightCtx.kind === 'elite' ? `The ${ENEMIES[fightCtx.enemies[0]].name} falls.` : 'You survive the encounter.');
   screen = 'rewards';
 }
 
 const actions = {
-  begin() { run = createRun(); enterNode(); },
+  begin() {
+    run = createRun();
+    exploreLog = ['Your lantern gutters. Tap a tile to walk there, or use WASD or the arrow keys.'];
+    standingOn = null;
+    screen = 'explore';
+  },
   restart() { run = null; screen = 'title'; },
+  toMap() { notice = null; screen = 'explore'; },
+  descend() {
+    const r = descend(run);
+    standingOn = null;
+    exploreLog = [`You catch your breath on the long stair and recover ${r.heal} HP.`];
+    screen = 'explore';
+  },
+  tab({ tab }) { benchTab = tab; notice = null; salvageMode = false; },
+  rest() {
+    const r = rest(run, desk);
+    notice = r.error ? { text: r.error, tone: 'warn' } : { text: `You rest by the candle and recover ${r.heal} HP. The dread eases.` };
+  },
+  refine({ id }) {
+    const r = refine(run, id);
+    notice = r.error ? { text: r.error, tone: 'warn' }
+      : { text: `Refined into ${Object.entries(r.made).map(([k, n]) => `${itemName(k)}${n > 1 ? ` ×${n}` : ''}`).join(', ')}.` };
+  },
   pick({ kind, key }) {
     const bp = blueprint;
     notice = null;
@@ -376,7 +603,6 @@ const actions = {
       else notice = { text: `${CARD_MATERIALS[bp.cardMat].name} holds only ${slots} enchantment${slots === 1 ? '' : 's'}.`, tone: 'warn' };
     }
   },
-  unpick({ kind, key }) { actions.pick({ kind, key }); },
   craft() {
     const r = craftIntoDeck(run, blueprint);
     if (r.error) { notice = { text: r.error, tone: 'warn' }; return; }
@@ -385,14 +611,22 @@ const actions = {
       : { text: `${r.card.name} added to your deck.` };
     blueprint = emptyBlueprint();
   },
+  reinscribe({ uid, ench }) {
+    const r = reinscribe(run, uid, ench);
+    notice = r.error ? { text: r.error, tone: 'warn' }
+      : r.discovered ? { text: `The card shifts under your pen. You discovered ${r.card.name}.`, tone: 'rare' }
+      : { text: `${r.card.name} now carries ${ENCHANTMENTS[ench].name}.` };
+  },
+  mend({ uid }) {
+    const r = mend(run, uid);
+    notice = r.error ? { text: r.error, tone: 'warn' } : { text: `${r.card.name} is whole again.` };
+  },
   toggleSalvage() { salvageMode = !salvageMode; notice = null; },
   salvage({ uid }) {
     const r = salvageCard(run, uid);
     salvageMode = false;
-    notice = r.error ? { text: r.error, tone: 'warn' } : { text: `The card comes apart. You recover ${INGREDIENTS[r.part].name}.` };
+    notice = r.error ? { text: r.error, tone: 'warn' } : { text: `The card comes apart. You recover ${itemName(r.part)}.` };
   },
-  leave() { advance(run); enterNode(); },
-  next() { advance(run); enterNode(); },
   target({ idx }) { target = +idx; },
   play({ uid }) {
     const err = playCard(combat, uid, target);
@@ -400,12 +634,12 @@ const actions = {
   },
   endTurn() { endTurn(combat); afterCombatAction(); },
   buy({ idx }) {
-    const s = shop[+idx];
+    const s = merchant.stock[+idx];
     if (s.sold || run.gold < s.price) return;
     run.gold -= s.price;
     run.inventory[s.id] = (run.inventory[s.id] || 0) + 1;
     s.sold = true;
-    notice = { text: `Bought ${INGREDIENTS[s.id].name}.` };
+    notice = { text: `Bought ${itemName(s.id)}.` };
   },
   repair({ uid }) {
     const k = run.deck.find(c => c.uid === uid);
@@ -425,13 +659,25 @@ document.addEventListener('click', e => {
   render();
 });
 
+const KEYS = {
+  ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+  w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0], W: [0, -1], S: [0, 1], A: [-1, 0], D: [1, 0],
+};
+
 document.addEventListener('keydown', e => {
-  if (screen === 'fight' && (e.key === 'e' || e.key === 'E') && !e.target.closest('input,textarea')) {
-    actions.endTurn(); render();
+  if (e.target.closest('input,textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (screen === 'fight' && (e.key === 'e' || e.key === 'E')) { actions.endTurn(); render(); return; }
+  if (screen === 'explore' && KEYS[e.key]) {
+    e.preventDefault();
+    const now = performance.now();
+    if (now - lastStepAt < STEP_MS) return;
+    lastStepAt = now;
+    walkPath = null;
+    moveBy(...KEYS[e.key]);
   }
 });
 
 // exposed for debugging in the console
-window.spellcrafter = { get run() { return run; }, get combat() { return combat; } };
+window.spellcrafter = { get run() { return run; }, get combat() { return combat; }, get screen() { return screen; }, walkTo, BLOCKING };
 
 render();

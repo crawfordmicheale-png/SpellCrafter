@@ -17,11 +17,13 @@ Opening `index.html` straight from disk won't work, because browsers block JavaS
 
 ### What's in it
 
-- A 9-stop run: crafting benches, fights, an elite, a shop, and the Unbound Grimoire as the boss.
-- The crafting bench: card material + one or two ink colors + ink material + enchantments, with a live preview.
-- Durability: paper and wood cards wear out across the run. Stone, silver and gold are permanent.
-- Ingredients from enemy drops, the shop, salvaging cards, and cards that break.
-- Four hidden recipes that get recorded in your Grimoire.
+- **Three dungeon floors** that are generated fresh each run: the Chapel Ruins, the Drowned Archive, and the Last Library where the boss waits. Explore by tapping a tile or with WASD or the arrow keys.
+- **Scavenging:** raw materials from the environment, reliquary boxes, and a guardian elite on each floor.
+- **Dread:** the longer you wander, the more often monsters find you.
+- **Writing desks:** refine raw materials, craft cards with a live preview, add monster parts to existing cards, mend worn cards, salvage, and rest.
+- **Monster parts are enchantments** (Moth Wing = Swift, Hound Fang = Leech, and so on).
+- **Durability:** paper and wood cards wear out across the run. Stone, silver and gold are permanent.
+- **Seven hidden recipes**, recorded in your Grimoire.
 
 ### Code layout
 
@@ -30,6 +32,8 @@ Opening `index.html` straight from disk won't work, because browsers block JavaS
 | `js/data.js` | All tunable numbers: ingredients, enemies, recipes, the run path |
 | `js/crafting.js` | Turns a blueprint into a card |
 | `js/combat.js` | Fight rules |
-| `js/run.js` | Run state: inventory, rewards, shop, salvage |
+| `js/run.js` | Run state: inventory, refining, re-inscribe, mend, rewards, shop, salvage |
+| `js/world.js` | Dungeon generation, fog of war, pathfinding, random encounters |
+| `js/explore-view.js` | Draws the dungeon on a canvas |
 | `js/main.js` | Screens and input |
 | `tests/` | Rules tests |

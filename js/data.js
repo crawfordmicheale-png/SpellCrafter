@@ -33,23 +33,61 @@ export const CARD_MATERIALS = {
 };
 
 export const ENCHANTMENTS = {
-  echo:     { name: 'Echo',     desc: 'Casts again at half power.' },
-  swift:    { name: 'Swift',    desc: 'Costs 0 the first time it is cast each fight.' },
-  bound:    { name: 'Bound',    desc: 'Stays in your hand at end of turn.' },
-  volatile: { name: 'Volatile', desc: 'Double power. Exhausts for the rest of the fight.' },
-  leech:    { name: 'Leech',    desc: 'Heal for a quarter of the damage dealt.' },
-  siphon:   { name: 'Siphon',   desc: 'Gain 1 mana if this kills an enemy.' },
+  echo:      { name: 'Echo',      part: "Acolyte's Bell",   desc: 'Casts again at half power.' },
+  swift:     { name: 'Swift',     part: 'Moth Wing',        desc: 'Costs 0 the first time it is cast each fight.' },
+  bound:     { name: 'Bound',     part: "Scrivener's Quill", desc: 'Stays in your hand at end of turn.' },
+  volatile:  { name: 'Volatile',  part: 'Ember Heart',      desc: 'Double power. Exhausts for the rest of the fight.' },
+  leech:     { name: 'Leech',     part: 'Hound Fang',       desc: 'Heal for a quarter of the damage dealt.' },
+  siphon:    { name: 'Siphon',    part: 'Grave Candle',     desc: 'Gain 1 mana if this kills an enemy.' },
+  hungering: { name: 'Hungering', part: 'Ghoul Tongue',     desc: 'Gets +2 stronger each time you cast it in a fight.' },
 };
+
+// Raw materials are what you scavenge in the world. Refine them at a writing desk.
+export const RAW_MATERIALS = {
+  ash:       { name: 'Ash',          node: 'Ash heap',          color: '#8a8580', rarity: 'common' },
+  bone:      { name: 'Bone Shards',  node: 'Ossuary niche',     color: '#e8e0cc', rarity: 'common' },
+  rags:      { name: 'Rotten Vestments', node: 'Vestry chest',  color: '#b9a57e', rarity: 'common' },
+  timber:    { name: 'Old Timber',   node: 'Broken pews',       color: '#8a5a33', rarity: 'common' },
+  gravesoil: { name: 'Grave Soil',   node: 'Fresh grave',       color: '#6b4f7a', rarity: 'common' },
+  bloodroot: { name: 'Bloodroot',    node: 'Bloodroot patch',   color: '#c0392b', rarity: 'common' },
+  kelp:      { name: 'Drowned Kelp', node: 'Flooded shelf',     color: '#3a6ea5', rarity: 'common' },
+  moss:      { name: 'Grave Moss',   node: 'Mossy font',        color: '#4f8a4b', rarity: 'common' },
+  slate:     { name: 'Slate',        node: 'Fallen slate',      color: '#77736f', rarity: 'uncommon' },
+  silver:    { name: 'Silver Ore',   node: 'Silver vein',       color: '#c9ced6', rarity: 'uncommon' },
+  gold:      { name: 'Gold Leaf',    node: 'Gilded tomes',      color: '#d7ad52', rarity: 'rare' },
+  heart:     { name: 'Heartblood',   node: null,                color: '#8d1f1a', rarity: 'rare' },
+};
+
+// Refining turns raw materials into crafting ingredients. Some raws have a choice.
+export const REFINING = [
+  { id: 'charcoal',   from: { raw_ash: 1 },       to: { ink_charcoal: 2 } },
+  { id: 'white',      from: { raw_bone: 1 },      to: { color_white: 1 } },
+  { id: 'paper',      from: { raw_rags: 1 },      to: { mat_paper: 2 } },
+  { id: 'wood',       from: { raw_timber: 1 },    to: { mat_wood: 1 } },
+  { id: 'black',      from: { raw_gravesoil: 1 }, to: { color_black: 1 } },
+  { id: 'red',        from: { raw_bloodroot: 1 }, to: { color_red: 1 } },
+  { id: 'blue',       from: { raw_kelp: 1 },      to: { color_blue: 1 } },
+  { id: 'green',      from: { raw_moss: 1 },      to: { color_green: 1 } },
+  { id: 'stone',      from: { raw_slate: 2 },     to: { mat_stone: 1 } },
+  { id: 'silverInk',  from: { raw_silver: 1 },    to: { ink_silver: 1 } },
+  { id: 'silverCard', from: { raw_silver: 2 },    to: { mat_silver: 1 } },
+  { id: 'goldInk',    from: { raw_gold: 1 },      to: { ink_gold: 1 } },
+  { id: 'goldCard',   from: { raw_gold: 2 },      to: { mat_gold: 1 } },
+  { id: 'bloodInk',   from: { raw_heart: 1 },     to: { ink_blood: 2 } },
+  { id: 'bleed',      from: {}, hpCost: 6,        to: { ink_blood: 1 } },
+];
 
 // Every ingredient in the game, keyed by inventory id.
 export const INGREDIENTS = {};
 for (const [k, v] of Object.entries(INK_COLORS))     INGREDIENTS[`color_${k}`] = { kind: 'color',   key: k, name: v.name, rarity: 'common' };
 for (const [k, v] of Object.entries(INK_MATERIALS))  INGREDIENTS[`ink_${k}`]   = { kind: 'inkMat',  key: k, name: `${v.name} Ink`, rarity: { charcoal: 'common', silver: 'uncommon', gold: 'rare', blood: 'rare' }[k] };
 for (const [k, v] of Object.entries(CARD_MATERIALS)) INGREDIENTS[`mat_${k}`]   = { kind: 'cardMat', key: k, name: `${v.name} Card`, rarity: { paper: 'common', wood: 'common', stone: 'uncommon', silver: 'uncommon', gold: 'rare' }[k] };
-for (const [k, v] of Object.entries(ENCHANTMENTS))   INGREDIENTS[`ench_${k}`]  = { kind: 'enchant', key: k, name: v.name, rarity: 'uncommon' };
+for (const [k, v] of Object.entries(ENCHANTMENTS))   INGREDIENTS[`ench_${k}`]  = { kind: 'enchant', key: k, name: v.part, rarity: 'uncommon' };
+for (const [k, v] of Object.entries(RAW_MATERIALS))  INGREDIENTS[`raw_${k}`]   = { kind: 'raw',     key: k, name: v.name, rarity: v.rarity };
 
 export const PRICES = { common: 12, uncommon: 25, rare: 45 };
 export const REPAIR_PRICE = 20;
+export const BENCH_REST_HEAL = 0.3; // fraction of max HP, once per desk
 
 // Named spells. Matching colors + ink material + card material (and any listed
 // enchantments) replaces the formula with a fixed, stronger effect.
@@ -83,6 +121,27 @@ export const RECIPES = [
     hint: 'Moss and gold, pressed into living wood.',
     flavor: 'The wood remembers being a tree.',
   },
+  {
+    id: 'bellstrike', name: 'Bellstrike',
+    match: { colors: ['red', 'white'], inkMat: 'silver', cardMat: 'stone', enchants: ['echo'] },
+    effects: [{ type: 'damage', amount: 10 }, { type: 'block', amount: 10 }],
+    hint: 'A branded stone, silvered, that rings twice.',
+    flavor: 'The chapel bell still tolls for someone.',
+  },
+  {
+    id: 'mindleech', name: 'Mind Leech',
+    match: { colors: ['black', 'blue'], inkMat: 'blood', cardMat: 'silver' },
+    effects: [{ type: 'poison', amount: 9 }, { type: 'draw', amount: 2 }],
+    hint: 'A nightmare written in blood on silver.',
+    flavor: 'It learns what they fear, then feeds.',
+  },
+  {
+    id: 'gravebloom', name: 'Gravebloom',
+    match: { colors: ['black', 'green'], inkMat: 'charcoal', cardMat: 'wood' },
+    effects: [{ type: 'poison', amount: 5 }, { type: 'heal', amount: 4 }],
+    hint: 'Rot and moss in ash, on a humble plank.',
+    flavor: 'What dies here feeds what grows here.',
+  },
 ];
 
 // Uncraftable starting cards. Permanent.
@@ -94,15 +153,17 @@ export const STARTER_CARDS = {
 export const STARTER_DECK = ['strike', 'strike', 'strike', 'strike', 'strike', 'guard', 'guard', 'guard', 'guard', 'scribble'];
 
 export const STARTING_INVENTORY = {
-  color_red: 1, color_white: 1, color_black: 1,
+  color_red: 1, color_white: 1,
   ink_charcoal: 2, ink_silver: 1,
   mat_paper: 2, mat_wood: 1,
   ench_volatile: 1,
+  raw_bone: 1, raw_gravesoil: 1, raw_ash: 1,
 };
 
 export const PLAYER_START = { hp: 60, maxHp: 60, gold: 30, energy: 3, handSize: 5 };
 
 // Enemy moves cycle in order. Each move is a list of actions.
+// Drop tables repeat entries to weight them.
 export const ENEMIES = {
   acolyte: {
     name: 'Hollow Acolyte', hp: 24,
@@ -112,7 +173,7 @@ export const ENEMIES = {
       { actions: [{ type: 'debuff', status: 'weak', amount: 2 }, { type: 'block', amount: 5 }] },
       { actions: [{ type: 'attack', amount: 8 }] },
     ],
-    drops: ['color_black', 'ink_charcoal', 'mat_paper'],
+    drops: ['ench_echo', 'raw_ash', 'raw_ash', 'raw_bone', 'raw_gravesoil'],
   },
   gravemoth: {
     name: 'Gravemoth', hp: 13,
@@ -121,7 +182,7 @@ export const ENEMIES = {
       { actions: [{ type: 'attack', amount: 3 }, { type: 'debuff', status: 'poison', amount: 2 }] },
       { actions: [{ type: 'attack', amount: 5 }] },
     ],
-    drops: ['color_green', 'mat_paper', 'ench_swift'],
+    drops: ['ench_swift', 'raw_moss', 'raw_rags', 'raw_rags'],
   },
   hound: {
     name: 'Ashen Hound', hp: 20,
@@ -131,7 +192,35 @@ export const ENEMIES = {
       { actions: [{ type: 'buff', status: 'strength', amount: 2 }, { type: 'block', amount: 4 }] },
       { actions: [{ type: 'attack', amount: 9 }] },
     ],
-    drops: ['color_red', 'mat_wood', 'ink_charcoal', 'ench_echo'],
+    drops: ['ench_leech', 'raw_ash', 'raw_bloodroot', 'raw_timber', 'ench_volatile'],
+  },
+  ghoul: {
+    name: 'Candle Ghoul', hp: 22,
+    desc: 'It eats the wax, then the wick, then the one holding it.',
+    moves: [
+      { actions: [{ type: 'attack', amount: 6 }] },
+      { actions: [{ type: 'buff', status: 'strength', amount: 1 }, { type: 'attack', amount: 4 }] },
+    ],
+    drops: ['ench_hungering', 'raw_gravesoil', 'raw_bone', 'ench_siphon'],
+  },
+  drowned: {
+    name: 'Drowned Scribe', hp: 18,
+    desc: 'Still copying the same page, underwater, forever.',
+    moves: [
+      { actions: [{ type: 'attack', amount: 5 }, { type: 'debuff', status: 'weak', amount: 1 }] },
+      { actions: [{ type: 'attack', amount: 7 }] },
+    ],
+    drops: ['raw_kelp', 'raw_kelp', 'raw_silver', 'ench_bound', 'raw_rags'],
+  },
+  warden: {
+    name: 'The Bell Warden', hp: 42, elite: true,
+    desc: 'It rang the bell for every funeral. Now it rings for yours.',
+    moves: [
+      { actions: [{ type: 'attack', amount: 9 }] },
+      { actions: [{ type: 'block', amount: 8 }, { type: 'debuff', status: 'weak', amount: 1 }] },
+      { actions: [{ type: 'attack', amount: 3, times: 3 }] },
+    ],
+    drops: ['ench_echo', 'raw_silver', 'raw_silver', 'raw_heart', 'raw_slate', 'raw_gold'],
   },
   scrivener: {
     name: 'The Pale Scrivener', hp: 52, elite: true,
@@ -141,7 +230,7 @@ export const ENEMIES = {
       { actions: [{ type: 'block', amount: 10 }, { type: 'debuff', status: 'weak', amount: 2 }] },
       { actions: [{ type: 'attack', amount: 5, times: 3 }] },
     ],
-    drops: ['ink_gold', 'mat_silver', 'ink_blood', 'color_blue', 'ench_bound', 'ench_leech'],
+    drops: ['ench_bound', 'raw_gold', 'raw_gold', 'raw_heart', 'raw_silver'],
   },
   grimoire: {
     name: 'The Unbound Grimoire', hp: 110, boss: true,
@@ -156,15 +245,38 @@ export const ENEMIES = {
   },
 };
 
-// The prototype's run is a fixed path. A branching map comes later.
-export const RUN_PATH = [
-  { type: 'bench',  label: 'Crafting Bench' },
-  { type: 'fight',  label: 'Chapel Ruins',    enemies: ['acolyte'] },
-  { type: 'fight',  label: 'Moth Lanterns',   enemies: ['gravemoth', 'gravemoth'] },
-  { type: 'bench',  label: 'Crafting Bench' },
-  { type: 'fight',  label: 'The Burnt Kennel', enemies: ['hound', 'gravemoth'] },
-  { type: 'shop',   label: 'The Rag Merchant' },
-  { type: 'fight',  label: 'Scriptorium',     enemies: ['scrivener'], elite: true },
-  { type: 'bench',  label: 'Crafting Bench' },
-  { type: 'fight',  label: 'The Last Library', enemies: ['grimoire'], boss: true },
+// Each region is a procedurally generated dungeon floor.
+// `raws` weights what the scavenge spots hold.
+export const REGIONS = [
+  {
+    name: 'The Chapel Ruins',
+    intro: 'Pews split for firewood. Bones in every niche. Somewhere below, a bell.',
+    raws: { ash: 3, bone: 3, rags: 2, timber: 2, gravesoil: 2, bloodroot: 2, moss: 1 },
+    nodes: 13, chests: 2,
+    encounters: [['acolyte'], ['gravemoth', 'gravemoth'], ['gravemoth'], ['acolyte', 'gravemoth']],
+    elite: 'warden', merchant: true, hpMult: 1,
+    palette: { floor: '#2b2430', floor2: '#30283a', wall: '#4a3f50', edge: '#6b5a74' },
+  },
+  {
+    name: 'The Drowned Archive',
+    intro: 'The river took the library a century ago. The scribes never stopped working.',
+    raws: { kelp: 3, moss: 2, slate: 2, silver: 2, rags: 2, bloodroot: 1, bone: 1 },
+    nodes: 14, chests: 2,
+    encounters: [['drowned'], ['drowned', 'gravemoth'], ['hound'], ['ghoul']],
+    elite: 'scrivener', merchant: true, hpMult: 1.15,
+    palette: { floor: '#1f2a30', floor2: '#233239', wall: '#3a4d56', edge: '#557582' },
+  },
+  {
+    name: 'The Last Library',
+    intro: 'Every book here was written by an Inkbinder. Most of them are still screaming.',
+    raws: { gold: 2, silver: 2, bloodroot: 2, gravesoil: 2, bone: 1, slate: 1, kelp: 1 },
+    nodes: 12, chests: 3,
+    encounters: [['hound', 'ghoul'], ['drowned', 'drowned'], ['ghoul', 'gravemoth', 'gravemoth'], ['acolyte', 'hound']],
+    elite: null, boss: 'grimoire', merchant: false, hpMult: 1.3,
+    palette: { floor: '#2e2320', floor2: '#352824', wall: '#523a2e', edge: '#7a5840' },
+  },
 ];
+
+// Random encounters: chance per step on open floor.
+export const ENCOUNTER = { graceSteps: 12, base: 0.02, perDread: 0.0003, max: 0.09, dreadPerStep: 1 };
+export const DESCEND_HEAL = 0.2; // fraction of max HP restored on the stairs

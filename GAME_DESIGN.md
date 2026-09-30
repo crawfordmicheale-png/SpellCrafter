@@ -19,16 +19,18 @@ Other names considered for the player class: Glyphwright, Scrivener, Hexscribe, 
 ## 1. Core Loop
 
 ```
-Map node → Encounter → Rewards (ingredients) → Crafting Bench → next node
-                                   ↑                   ↓
-                              Shop / Salvage ←── Deck grows & evolves
+Explore a floor ──→ Scavenge raw materials ──→ Writing desk: refine → craft → re-inscribe
+      │                     ↑                                   │
+      └── random encounters ┘  (monster parts = enchantments)   ↓
+                                                   Stairs down → next floor → the Grimoire
 ```
 
-1. Choose a path on a branching map (Slay the Spire-style).
-2. Fight enemies with your deck.
-3. Earn ingredients and gold.
-4. Craft new cards at the Crafting Bench, buy materials at shops, or salvage old cards for parts.
-5. Beat the act boss → next act. Die → run ends. Discovered recipes and some unlocks carry over.
+1. Explore a procedurally generated, top-down dungeon floor by lantern light.
+2. Scavenge **raw materials** from the environment (ash heaps, ossuaries, silver veins, gilded tomes).
+3. Wandering builds **Dread**, and random encounters get more likely. Monsters drop **monster parts**, which are enchantments.
+4. At a **writing desk**, refine raws into ingredients, craft new cards, add enchantments to existing cards, mend worn ones, and rest.
+5. Find the stairs and descend. The third floor holds the Unbound Grimoire.
+6. Die → run ends. Discovered recipes carry over (planned).
 
 ---
 
@@ -85,37 +87,62 @@ Every crafted card needs four components:
 > **Durability** tracks uses across the whole run, not per fight. When a card breaks you get a salvage roll (see §4.3).
 > This constant wear is what drives the crafting loop: cheap cards come and go, and permanent cards become heirlooms.
 
-### 3.4 Enchantments: *keywords*
+### 3.4 Enchantments: *keywords, harvested from monsters*
 
-| Enchantment | Effect |
-|---|---|
-| Echo | Plays a second time at 50% power |
-| Swift | Costs 0 the first time it's drawn each combat |
-| Bound | Stays in your hand at end of turn |
-| Volatile | ×2 power, then Exhausts (removed for the rest of combat) |
-| Leech | Heal for 25% of the damage this card deals |
-| Siphon | Refund 1 mana if this card kills an enemy |
+Enchantments are **monster parts**. You can only get one by killing (or finding) the creature it comes from, so hunting a specific enemy is a strategy.
+
+| Monster part | Enchantment | Effect | Main source |
+|---|---|---|---|
+| Acolyte's Bell | Echo | Casts a second time at 50% power | Hollow Acolyte, Bell Warden |
+| Moth Wing | Swift | Costs 0 the first time it's cast each fight | Gravemoth |
+| Scrivener's Quill | Bound | Stays in your hand at end of turn | Drowned Scribe, Pale Scrivener |
+| Ember Heart | Volatile | ×2 power, then Exhausts for the fight | Ashen Hound, chests |
+| Hound Fang | Leech | Heal for 25% of the damage this card deals | Ashen Hound |
+| Grave Candle | Siphon | Refund 1 mana if this card kills an enemy | Candle Ghoul |
+| Ghoul Tongue | Hungering | +2 power each time it's cast in the same fight | Candle Ghoul |
 
 ---
 
-## 4. Getting Ingredients (all three sources)
+## 4. Getting Ingredients
 
-### 4.1 Combat Loot
-- Normal fight: 1–2 common ingredients (Charcoal, basic colors, Paper, Wood) + gold.
-- Elite fight: 1 rare ingredient (Gold ink, Blood, Silver or Gold material) or 1 enchantment.
-- Boss: pick 1 of 3 rare bundles.
-- **Enemy-themed drops:** each enemy type drops ingredients that match it (fire elementals drop Red ink, golems drop Stone). That lets players hunt for what they need.
+### 4.1 Scavenging (exploration)
+Each floor is a top-down dungeon with fog of war and a lantern radius. Scavenge spots hold **raw materials** themed to the floor:
 
-### 4.2 Shops
-- Sell individual ingredients, prices scaled by rarity.
-- Sell a few **pre-crafted cards** at a premium.
-- Service: **Repair** a card (restore durability) for gold.
-- Service: **Reink** a card (swap the ink color) for gold.
+| Floor | Common finds | Rare finds | Elite | Merchant |
+|---|---|---|---|---|
+| The Chapel Ruins | Ash, Bone Shards, Rotten Vestments, Old Timber, Grave Soil | Bloodroot, Grave Moss | The Bell Warden | Yes |
+| The Drowned Archive | Drowned Kelp, Grave Moss, Rotten Vestments | Slate, Silver Ore | The Pale Scrivener | Yes |
+| The Last Library | Bloodroot, Grave Soil | Gold Leaf, Silver Ore, Slate | (Boss) | No |
 
-### 4.3 Salvage (taking cards apart)
-- At the bench, dismantle a card to recover **one random component** (or 2 with a relic/upgrade).
-- Cards that break from durability also give a 50% chance to salvage one component.
-- The Starter Cards (see §5) salvage into Charcoal + Paper.
+Reliquary boxes (chests) hold gold plus rare raws or monster parts. The elite guards a room and drops rare materials, including **Heartblood**.
+
+### 4.2 Refining (at a writing desk)
+Raw materials must be refined before they can be crafted. Some refining is a real choice.
+
+| Raw | Becomes |
+|---|---|
+| Ash | Charcoal Ink ×2 |
+| Bone Shards / Bloodroot / Drowned Kelp / Grave Moss / Grave Soil | White / Red / Blue / Green / Black ink |
+| Rotten Vestments | Paper Card ×2 |
+| Old Timber | Wood Card |
+| Slate ×2 | Stone Card |
+| Silver Ore | Silver Ink, **or** 2 ore → Silver Card |
+| Gold Leaf | Gold Ink, **or** 2 leaf → Gold Card |
+| Heartblood | Blood Ink ×2 |
+| *6 of your own HP* | Blood Ink (always available) |
+
+### 4.3 Random encounters and Dread
+- Every step on open floor adds 1 **Dread**. After a short grace period, each step has a chance to trigger a fight: 2% + 0.03% per Dread, capped at 9%.
+- Resting at a desk calms Dread by 30. Descending halves it.
+- Monsters drop their monster part and themed raws.
+
+### 4.4 Merchant
+- Sells raws, refined ingredients and monster parts. Prices are set by rarity.
+- **Repair** a worn card for gold.
+
+### 4.5 Salvage and breakage
+- At a desk, dismantle one card per visit to recover one random component.
+- Cards that break from wear have a 50% chance to leave a component behind.
 
 ---
 
@@ -140,9 +167,13 @@ Some exact combinations make **named spells** with unique effects beyond the for
 | Black + Blood + Gold material | **Pact:** Deal 20, lose 5 max HP permanently |
 | Blue + Silver + Silver material | **Clarity:** Draw 3, your next card costs 0 |
 | Red + Blood + Paper | **Kindling:** Deal 10 to ALL enemies (still costs 3 HP) |
-| Green + Gold + Wood | **Evergreen:** Heal 5; this card never loses durability |
+| Green + Gold + Wood | **Evergreen:** Heal 6, gain 4 Block; this card never loses durability |
+| Red + White + Silver ink + Stone + Echo | **Bellstrike:** Deal 10, gain 10 Block (echoes) |
+| Black + Blue + Blood + Silver card | **Mind Leech:** Apply 9 Poison, draw 2 |
+| Black + Green + Charcoal + Wood | **Gravebloom:** Apply 5 Poison, heal 4 |
 
-- Recipes are hidden until you craft them the first time, then saved to a **Grimoire** that persists across runs.
+- Recipes are hidden until you craft them the first time, then saved to a **Grimoire** (per run in the prototype; persistent across runs is planned).
+- Re-inscribing an existing card can complete a recipe that needs an enchantment (Bellstrike).
 - Hint scrolls found in runs reveal partial recipes ("…Black ink and Blood…").
 
 ---
@@ -158,9 +189,17 @@ Some exact combinations make **named spells** with unique effects beyond the for
 
 ## 8. Run Structure
 
-- 3 acts × ~15 nodes, each act ending in a boss.
-- Node types: Fight, Elite, Shop, **Crafting Bench** (free craft + 1 salvage), Rest, Event, Treasure.
-- **You can craft only at Bench nodes** (and maybe after bosses). This keeps crafting a meaningful decision instead of something you do after every fight.
+- 3 floors: The Chapel Ruins → The Drowned Archive → The Last Library (boss). Enemies get 15% and then 30% more HP on the lower floors.
+- Each floor: ~11 rooms, 12–14 scavenge spots, 2–3 reliquary boxes, a writing desk near the start, a merchant, an elite, and the stairs in the farthest room.
+- **You can craft only at writing desks.** Each desk allows one rest (heal 30% max HP).
+- Descending the stairs restores 20% max HP.
+
+### 8.1 Writing desk actions
+| Tab | What you can do |
+|---|---|
+| Inscribe | Craft a new card from refined ingredients (live preview) |
+| Refine | Turn raw materials into ingredients, or bleed for Blood Ink |
+| Deck | Re-inscribe (add a monster part to a card with a free slot), Mend (restore a worn card using its material), Salvage |
 
 ---
 
@@ -174,19 +213,21 @@ Some exact combinations make **named spells** with unique effects beyond the for
 
 ## 10. Open Questions
 
-1. **Engine:** Godot, Unity, or web (TypeScript)?
+1. **Engine:** stay on web, or move to Godot once the systems feel right?
 2. **Deck size limits:** Should there be a maximum deck size to stop players crafting endlessly?
-3. **Crafting frequency:** Is "only at Bench nodes" too restrictive? Playtest.
-4. **Art direction:** Should card appearance visibly reflect its ingredients (paper looks worn, gold shines, blood ink drips)? Strongly recommended: it's the fantasy.
-5. **Upgrades:** Can you add an enchantment to an existing card, or only when you first craft it?
+3. **Visible vs. random enemies:** Keep random encounters driven by Dread, or show wandering monsters on the map that you can sneak past?
+4. **Fleeing:** Should you be able to run from a random encounter, at a cost (drop materials, lose HP, gain Dread)?
+5. **Ingredient quality:** Should scavenged materials come in grades (crude / fine / pristine) that change their multiplier?
+6. **Light as a resource:** Should lantern oil run down as you explore, shrinking your light radius?
 
 ---
 
-## 11. Suggested Build Order
+## 11. Build Order
 
-1. **Data model:** ingredients plus the card formula as plain data (JSON) and a function that calculates a card from its ingredients.
-2. **Combat prototype:** one fight with the starting deck, no art.
-3. **Crafting Bench UI:** drag ingredients into slots and preview the resulting card live.
-4. **Run loop:** map, rewards, shop, salvage.
-5. Recipes, Grimoire, meta-progression.
-6. Art, sound, polish.
+1. ~~Data model and card formula~~ (done)
+2. ~~Combat prototype~~ (done)
+3. ~~Crafting bench with live preview~~ (done)
+4. ~~Exploration floors, scavenging, refining, monster parts, re-inscribe and mend~~ (done)
+5. Persistent Grimoire and unlocks across runs.
+6. More floors, enemies, recipes and events. Balance pass.
+7. Art, sound, polish.
