@@ -210,6 +210,8 @@ export function step(world, run, dx, dy, rng = Math.random) {
   if (obj) return { object: obj };
 
   run.dread += ENCOUNTER.dreadPerStep;
+  // The Moth Lantern draws things to you: an extra point of Dread every other step.
+  if (run.relics?.includes('mothlantern') && world.oilSteps % 2 === 0) run.dread += 1;
   world.stepsSinceFight++;
   if (world.stepsSinceFight < ENCOUNTER.graceSteps) return {};
   let chance = Math.min(ENCOUNTER.max, ENCOUNTER.base + run.dread * ENCOUNTER.perDread);
@@ -223,7 +225,8 @@ export function step(world, run, dx, dy, rng = Math.random) {
 }
 
 function burnOil(world, run) {
-  if (++world.oilSteps >= LANTERN.stepsPerOil) {
+  const perOil = LANTERN.stepsPerOil * (run.relics?.includes('mothlantern') ? 2 : 1);
+  if (++world.oilSteps >= perOil) {
     world.oilSteps = 0;
     run.oil = Math.max(0, run.oil - 1);
   }

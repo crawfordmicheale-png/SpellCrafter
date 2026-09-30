@@ -16,6 +16,38 @@ export const HYBRID_NOUNS = {
   'green+white': 'Sanctuary', 'black+white': 'Shroud', 'black+green': 'Rot',
 };
 
+// Ink reactions: casting a card right after one of a different color, or casting
+// a hybrid card, sets off the reaction for that pair. Names match the hybrid inks.
+export const REACTIONS = {
+  'blue+red':    { name: 'Storm',     desc: 'Draw 1 card.', effects: [{ type: 'draw', amount: 1 }] },
+  'red+white':   { name: 'Brand',     desc: 'Deal damage equal to half your Block.', effects: [{ type: 'brand' }] },
+  'green+red':   { name: 'Cautery',   desc: 'Heal 3 and cure your Poison.', effects: [{ type: 'heal', amount: 3 }, { type: 'cure' }] },
+  'black+red':   { name: 'Hexfire',   desc: "The target's Poison burns all at once.", effects: [{ type: 'detonate' }] },
+  'blue+white':  { name: 'Aegis',     desc: 'Gain 5 Block.', effects: [{ type: 'block', amount: 5 }] },
+  'blue+green':  { name: 'Tide',      desc: 'Gain 1 mana.', effects: [{ type: 'mana', amount: 1 }] },
+  'black+blue':  { name: 'Nightmare', desc: 'Apply 2 Weak to the target.', effects: [{ type: 'weaken', amount: 2 }] },
+  'green+white': { name: 'Sanctuary', desc: 'Heal 4.', effects: [{ type: 'heal', amount: 4 }] },
+  'black+white': { name: 'Shroud',    desc: "Strip the target's Block.", effects: [{ type: 'strip' }] },
+  'black+green': { name: 'Rot',       desc: "Spread the target's Poison to every other enemy.", effects: [{ type: 'spread' }] },
+};
+
+// Relics: passive trinkets. Elites offer a choice of three; reliquaries and the
+// merchant sometimes have one.
+export const RELICS = {
+  inkwell:     { name: 'Cracked Inkwell',     desc: 'Blood ink costs 1 less HP to cast.' },
+  thimble:     { name: "Scrivener's Thimble", desc: 'Paper cards last 2 casts longer.' },
+  mothlantern: { name: 'Moth Lantern',        desc: 'Your lantern burns oil half as fast, but Dread rises faster.' },
+  bell:        { name: 'Tolling Bell',        desc: 'Enemies start every fight with 1 Weak.' },
+  needle:      { name: 'Silver Needle',       desc: 'Your first attack each turn ignores Block.' },
+  candle:      { name: 'Chapel Candle',       desc: 'Heal 4 HP after every fight.' },
+  quill:       { name: 'Raven Quill',         desc: 'Draw 2 extra cards on the first turn of each fight.' },
+  locket:      { name: 'Heart Locket',        desc: '+10 max HP.' },
+  dice:        { name: 'Bone Dice',           desc: 'Monsters drop an extra item a third of the time.' },
+  prism:       { name: 'Ink Prism',           desc: 'Ink reactions are twice as strong.' },
+};
+export const RELIC_PRICE = 70;
+export const CHEST_RELIC_CHANCE = 0.15;
+
 export const INK_MATERIALS = {
   charcoal: { name: 'Charcoal', adj: 'Ashen',    mult: 0.75, extraCost: 0, hpCost: 0, desc: 'x0.75 power. Cheap.' },
   silver:   { name: 'Silver',   adj: 'Silvered', mult: 1.0,  extraCost: 0, hpCost: 0, purify: true, desc: 'x1 power. Removes 1 debuff from you.' },

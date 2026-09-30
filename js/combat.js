@@ -1,4 +1,4 @@
-import { ENEMIES } from './data.js';
+import { ENEMIES, REACTIONS } from './data.js';
 import { salvageRoll } from './crafting.js';
 
 export function shuffle(arr, rng = Math.random) {
@@ -23,16 +23,42 @@ export function createCombat(run, enemyKeys, rng = Math.random, { hpMult = 1 } =
     drawPile: shuffle([...run.deck], rng),
     hand: [], discard: [], exhaust: [],
     swiftUsed: new Set(),
+    lastColors: null,    // ink colors of the last card cast this turn
+    lastReaction: null,  // { key, name, n } for the most recent reaction
+    reactionCount: 0,
+    needleReady: false,
     turn: 0,
     log: [],
     over: null, // 'won' | 'lost'
   };
   log(c, `${c.enemies.map(e => e.name).join(' and ')} ${c.enemies.length > 1 ? 'block' : 'blocks'} your path.`);
+  if (hasRelic(run, 'bell')) {
+    for (const e of c.enemies) e.weak = 1;
+    log(c, 'The Tolling Bell rings. Your enemies falter.');
+  }
   startPlayerTurn(c);
   return c;
 }
 
 const log = (c, msg) => c.log.push(msg);
+const hasRelic = (run, id) => !!run.relics?.includes(id);
+const pairKey = (a, b) => [a, b].sort().join('+');
+
+// Which reaction casting `colors` would set off, given the previous inscribed card's
+// colors. A card following a different color reacts; a hybrid always reacts with itself.
+export function reactionFor(prevColors, colors) {
+  if (prevColors) {
+    for (const p of prevColors) for (const q of colors) {
+      if (p !== q && REACTIONS[pairKey(p, q)]) return pairKey(p, q);
+    }
+  }
+  if (colors.length === 2) return pairKey(colors[0], colors[1]);
+  return null;
+}
+
+export const previewReaction = (c, card) => card.crafted ? reactionFor(c.lastColors, card.colors) : null;
+
+export const bloodCost = (c, card) => Math.max(0, (card.hpCost || 0) - (hasRelic(c.run, 'inkwell') ? 1 : 0));
 const GROWS = new Set(['damage', 'damageAll', 'block', 'heal', 'poison']);
 const alive = c => c.enemies.filter(e => e.hp > 0);
 
@@ -57,12 +83,15 @@ function startPlayerTurn(c) {
   c.player.block = 0;
   c.player.energy = c.run.energy;
   c.player.nextFree = false;
+  c.lastColors = null;
+  c.needleReady = hasRelic(c.run, 'needle');
   if (c.player.poison > 0) {
     loseHp(c, c.player.poison, 'Poison');
     c.player.poison--;
     if (c.over) return;
   }
-  draw(c, Math.max(0, c.run.handSize - c.hand.length));
+  const extra = c.turn === 1 && hasRelic(c.run, 'quill') ? 2 : 0;
+  draw(c, Math.max(0, c.run.handSize + extra - c.hand.length));
 }
 
 function loseHp(c, n, source) {
@@ -101,7 +130,8 @@ export function effectiveCost(c, card) {
 export function canPlay(c, card) {
   if (c.over) return 'The fight is over.';
   if (effectiveCost(c, card) > c.player.energy) return 'Not enough mana.';
-  if (card.hpCost && c.run.hp <= card.hpCost) return 'Not enough blood left to pay.';
+  const blood = bloodCost(c, card);
+  if (blood && c.run.hp <= blood) return 'Not enough blood left to pay.';
   return null;
 }
 
@@ -123,10 +153,13 @@ export function playCard(c, cardUid, targetIdx = 0) {
   c.hand.splice(idx, 1);
   log(c, `You cast ${card.name}${usedFree ? ' for free' : ''}.`);
 
-  if (card.hpCost) loseHp(c, card.hpCost, 'blood price');
+  const blood = bloodCost(c, card);
+  if (blood) loseHp(c, blood, 'blood price');
 
   let dealtTotal = 0, killed = false;
-  const pierce = card.enchants.includes('piercing');
+  const needle = c.needleReady && card.effects.some(e => e.type === 'damage' || e.type === 'damageAll');
+  if (needle) c.needleReady = false;
+  const pierce = card.enchants.includes('piercing') || needle;
   const growth = card.enchants.includes('hungering') ? 2 * (c.hunger[card.uid] || 0) : 0;
   const apply = (scale) => {
     for (const e of card.effects) {
@@ -179,6 +212,15 @@ export function playCard(c, cardUid, targetIdx = 0) {
   }
   if (card.goldOnCast) c.run.gold += card.goldOnCast;
 
+  // Ink reactions. Only inscribed cards react; starter cards are plain ink.
+  const reactKey = card.crafted ? reactionFor(c.lastColors, card.colors) : null;
+  if (card.crafted) c.lastColors = card.colors;
+  if (reactKey && !c.over && alive(c).length) {
+    if (!target || target.hp <= 0) target = alive(c)[0];
+    const r = react(c, reactKey, target);
+    dealtTotal += r.dealt; killed ||= r.killed;
+  }
+
   // Wear and tear.
   let broken = false;
   if (Number.isFinite(card.durability)) {
@@ -202,6 +244,44 @@ export function playCard(c, cardUid, targetIdx = 0) {
   if (c.run.hp <= 0) c.over = 'lost';
   else if (!alive(c).length) c.over = 'won';
   return null;
+}
+
+function react(c, key, target) {
+  const reaction = REACTIONS[key];
+  const mult = hasRelic(c.run, 'prism') ? 2 : 1;
+  let dealt = 0, killed = false;
+  c.lastReaction = { key, name: reaction.name, n: ++c.reactionCount };
+  log(c, `${reaction.name}! ${reaction.desc}`);
+  for (const e of reaction.effects) {
+    const n = (e.amount || 0) * mult;
+    switch (e.type) {
+      case 'draw': draw(c, n); break;
+      case 'block': c.player.block += n; break;
+      case 'heal': c.run.hp = Math.min(c.run.maxHp, c.run.hp + n); break;
+      case 'mana': c.player.energy += n; break;
+      case 'cure': c.player.poison = 0; break;
+      case 'weaken': if (target) target.weak += n; break;
+      case 'strip': if (target) target.block = 0; break;
+      case 'brand': {
+        const dmg = Math.floor(c.player.block / 2) * mult;
+        if (target && dmg > 0) { const r = damageEnemy(c, target, dmg); dealt += r.dealt; killed ||= r.killed; }
+        break;
+      }
+      case 'detonate': {
+        if (!target || !target.poison) break;
+        const dmg = Math.min(target.hp, target.poison * mult);
+        target.hp -= dmg;
+        target.poison = 0;
+        dealt += dmg;
+        if (target.hp <= 0) { killed = true; log(c, `${target.name} burns away.`); }
+        break;
+      }
+      case 'spread':
+        if (target?.poison) for (const other of alive(c)) if (other !== target) other.poison += target.poison * mult;
+        break;
+    }
+  }
+  return { dealt, killed };
 }
 
 export function endTurn(c) {

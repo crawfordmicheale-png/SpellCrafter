@@ -404,3 +404,53 @@ button.danger { color: #e7837b; border-color: #5a2320; margin-right: auto; }
   .fx-float { animation-duration: .01s !important; }
   .card.fly { display: none; }
 }
+
+/* ---------- relics ---------- */
+.relics { display: inline-flex; gap: 2px; align-items: center; flex-wrap: wrap; }
+.relic img { display: block; width: 28px; height: 28px; }
+.player .relics img { width: 32px; height: 32px; }
+.relicpick { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.reliccard {
+  width: 190px; display: grid; justify-items: center; gap: 6px; padding: 14px 12px; text-align: center;
+  background: linear-gradient(#2b2230, #1f1824); border-color: #5a4570;
+}
+.reliccard:hover:not(:disabled) { border-color: #c3a2de; box-shadow: 0 0 16px #8e5fb044; }
+.reliccard b { font-family: var(--f-label); color: #c3a2de; }
+.reliccard span { color: var(--muted); font-size: .88rem; }
+.portrait.relicart { width: 64px; height: 64px; }
+.portrait.wareart { width: 40px; height: 40px; grid-row: span 3; }
+.ware.relicware { grid-template-columns: auto 1fr; column-gap: 10px; border-color: #5a4570; }
+.ware.relicware small { color: #c3a2de; }
+.loot.heal { border-color: #4f8a4b; color: #9fe07a; }
+.section-title { font-family: var(--f-label); letter-spacing: .06em; color: var(--brass); margin: 24px 0 8px; }
+.reactlist, .reliclist { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.reactlist li { display: grid; grid-template-columns: auto auto 1fr; gap: 10px; align-items: center; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+.reactlist b, .reliclist b { font-family: var(--f-label); color: var(--rare); }
+.reactlist li > span:last-child, .reliclist span { color: var(--muted); font-size: .88rem; }
+.reliclist li { display: flex; gap: 10px; align-items: center; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+.reliclist li div { display: grid; min-width: 0; }
+.reliclist .portrait.relicart { width: 48px; height: 48px; flex: none; }
+.pair { display: inline-flex; gap: 2px; }
+.inkpip { width: 22px; height: 22px; vertical-align: middle; }
+.chip.ink { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.chip.ink .inkpip { width: 16px; height: 16px; }
+
+/* ---------- reactions ---------- */
+.card.reacts { box-shadow: 0 6px 16px #0008, 0 0 0 2px #c3a2de, 0 0 18px #8e5fb088; }
+.reacttag {
+  position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%);
+  padding: 1px 8px; border-radius: 3px; white-space: nowrap;
+  background: #2b2230; border: 1px solid #c3a2de; color: #e2cff2;
+  font-family: var(--f-label); font-size: .72rem; letter-spacing: .04em;
+}
+.enemies { position: relative; }
+@keyframes banner { 0% { opacity: 0; transform: translate(-50%, -30%) scale(.7); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); } 70% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -80%) scale(1); } }
+.reaction-banner {
+  position: absolute; left: 50%; top: 50%; z-index: 5; pointer-events: none;
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--f-display); font-size: 3rem; color: #e2cff2; white-space: nowrap;
+  text-shadow: 0 0 18px #8e5fb0, 0 3px 0 #000;
+  animation: banner 1.3s ease-out forwards;
+}
+.reaction-banner .inkpip { width: 36px; height: 36px; }
+@media (prefers-reduced-motion: reduce) { .reaction-banner { animation: none; transform: translate(-50%, -50%); } }

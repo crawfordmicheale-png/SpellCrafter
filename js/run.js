@@ -1,8 +1,8 @@
 import {
   ENEMIES, INGREDIENTS, PRICES, REGIONS, STARTER_DECK, STARTING_INVENTORY, PLAYER_START, REFINING,
-  CARD_MATERIALS, BENCH_REST_HEAL, RAW_MATERIALS, DESCEND_HEAL, LANTERN,
+  CARD_MATERIALS, BENCH_REST_HEAL, RAW_MATERIALS, DESCEND_HEAL, LANTERN, RELICS, RELIC_PRICE, CHEST_RELIC_CHANCE,
 } from './data.js';
-import { makeStarterCard, craftCard, validateBlueprint, blueprintIngredients, salvageRoll } from './crafting.js';
+import { makeStarterCard, craftCard, validateBlueprint, blueprintIngredients, salvageRoll, ensureUidAbove } from './crafting.js';
 import { generateRegion, lightRadius, reveal } from './world.js';
 
 export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecipes = []) {
@@ -17,6 +17,7 @@ export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecip
     regionIdx: 0,
     world: null,
     salvagedHere: false,
+    relics: [],
   };
   enterWorld(run, generateRegion(0, seed));
   return run;
@@ -26,6 +27,27 @@ function enterWorld(run, world) {
   run.world = world;
   world.radius = lightRadius(run.oil);
   reveal(world);
+}
+
+// ---------- relics ----------
+
+export const hasRelic = (run, id) => run.relics.includes(id);
+export const unownedRelics = run => Object.keys(RELICS).filter(id => !hasRelic(run, id));
+
+export function gainRelic(run, id) {
+  if (hasRelic(run, id)) return;
+  run.relics.push(id);
+  if (id === 'locket') { run.maxHp += 10; run.hp += 10; }
+  if (id === 'thimble') {
+    for (const k of run.deck) if (k.cardMat === 'paper') { k.durability += 2; k.maxDurability += 2; }
+  }
+}
+
+export function relicChoices(run, n = 3, rng = Math.random) {
+  const pool = unownedRelics(run);
+  const out = [];
+  while (out.length < n && pool.length) out.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
+  return out;
 }
 
 export function burnValue(card) {
@@ -86,6 +108,7 @@ export function craftIntoDeck(run, bp) {
   const error = validateBlueprint(bp, run.inventory);
   if (error) return { error };
   const card = craftCard(bp);
+  if (card.cardMat === 'paper' && hasRelic(run, 'thimble')) { card.durability += 2; card.maxDurability += 2; }
   for (const id of blueprintIngredients(bp)) removeItem(run, id);
   run.deck.push(card);
   const discovered = card.recipeId && !run.grimoire.has(card.recipeId);
@@ -161,12 +184,12 @@ export function salvageCard(run, cardUid, rng = Math.random) {
 const pick = (arr, rng) => arr[Math.floor(rng() * arr.length)];
 
 // Loot for a won fight. Each enemy drops from its own themed table.
-export function rollRewards(enemyKeys, { elite = false, boss = false } = {}, rng = Math.random) {
+export function rollRewards(enemyKeys, { elite = false, boss = false, dice = false } = {}, rng = Math.random) {
   const items = [];
   for (const key of enemyKeys) {
     const drops = ENEMIES[key].drops;
     if (!drops.length) continue;
-    const n = ENEMIES[key].elite ? 3 : 1 + (rng() < 0.4 ? 1 : 0);
+    const n = (ENEMIES[key].elite ? 3 : 1 + (rng() < 0.4 ? 1 : 0)) + (dice && rng() < 1 / 3 ? 1 : 0);
     for (let i = 0; i < n; i++) items.push(pick(drops, rng));
   }
   const gold = boss ? 0 : elite ? 40 + Math.floor(rng() * 15) : 6 + Math.floor(rng() * 8);
@@ -189,17 +212,59 @@ export function openChest(run, chest, rng = Math.random) {
   for (const id of items) addItem(run, id);
   run.gold += gold;
   chest.gone = true;
-  return { items, gold };
+  let relic = null;
+  if (rng() < CHEST_RELIC_CHANCE && unownedRelics(run).length) {
+    relic = relicChoices(run, 1, rng)[0];
+    gainRelic(run, relic);
+  }
+  return { items, gold, relic };
 }
 
 export function applyRewards(run, rewards) {
   for (const id of rewards.items) addItem(run, id);
   run.gold += rewards.gold;
+  if (hasRelic(run, 'candle')) {
+    const before = run.hp;
+    run.hp = Math.min(run.maxHp, run.hp + 4);
+    rewards.healed = run.hp - before;
+  }
 }
 
-export function rollShop(rng = Math.random) {
+export function rollShop(rng = Math.random, run = null) {
   const ids = Object.keys(INGREDIENTS).filter(id => id !== 'raw_heart');
   const stock = new Set();
   while (stock.size < 9) stock.add(pick(ids, rng));
-  return [...stock].map(id => ({ id, price: PRICES[INGREDIENTS[id].rarity], sold: false }));
+  const wares = [...stock].map(id => ({ id, price: PRICES[INGREDIENTS[id].rarity], sold: false }));
+  const relic = run && relicChoices(run, 1, rng)[0];
+  if (relic) wares.push({ relic, price: RELIC_PRICE, sold: false });
+  return wares;
+}
+
+// ---------- saving ----------
+// JSON cannot hold Infinity, typed arrays or Sets, so those are converted here.
+
+export function serializeRun(run, resume = {}) {
+  const w = run.world;
+  const data = {
+    ...run,
+    grimoire: [...run.grimoire],
+    deck: run.deck.map(k => ({ ...k, durability: fin(k.durability), maxDurability: fin(k.maxDurability) })),
+    world: { ...w, tiles: Array.from(w.tiles), seen: Array.from(w.seen).join('') },
+  };
+  return JSON.stringify({ v: 1, run: data, resume });
+}
+
+const fin = n => (Number.isFinite(n) ? n : 'inf');
+const unfin = n => (n === 'inf' ? Infinity : n);
+
+export function deserializeRun(text) {
+  const { v, run, resume } = JSON.parse(text);
+  if (v !== 1) throw new Error('Unknown save version');
+  run.grimoire = new Set(run.grimoire);
+  run.relics ||= [];
+  run.deck = run.deck.map(k => ({ ...k, durability: unfin(k.durability), maxDurability: unfin(k.maxDurability) }));
+  run.world.tiles = Uint8Array.from(run.world.tiles);
+  run.world.seen = Uint8Array.from(run.world.seen, ch => +ch);
+  ensureUidAbove(Math.max(0, ...run.deck.map(k => +k.uid.slice(1))));
+  return { run, resume };
 }

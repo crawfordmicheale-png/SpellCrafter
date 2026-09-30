@@ -211,12 +211,52 @@ Some exact combinations make **named spells** with unique effects beyond the for
 
 ---
 
+## 6.5 Ink Reactions
+
+Casting an **inscribed** card right after one of a different ink sets off the reaction for that pair. A two-ink (hybrid) card always sets off its own reaction. Starter cards are plain ink: they never react and don't break a chain. Cards in hand that would react glow and show the reaction's name.
+
+| Inks | Reaction | Effect |
+|---|---|---|
+| Red + Blue | Storm | Draw 1 card |
+| Red + White | Brand | Deal damage equal to half your Block |
+| Red + Green | Cautery | Heal 3 and cure your Poison |
+| Red + Black | Hexfire | The target's Poison burns all at once |
+| Blue + White | Aegis | Gain 5 Block |
+| Blue + Green | Tide | Gain 1 mana |
+| Blue + Black | Nightmare | Apply 2 Weak to the target |
+| Green + White | Sanctuary | Heal 4 |
+| White + Black | Shroud | Strip the target's Block |
+| Green + Black | Rot | Spread the target's Poison to every other enemy |
+
+This makes the order you cast in matter, and rewards crafting cards in inks that chain together.
+
+---
+
 ## 7. Combat Basics
 
 - 3 mana per turn, draw 5 cards per turn.
 - Enemies show their intent (attack / defend / buff) so the player can plan.
 - Block resets each turn.
 - HP carries over between fights. Heal at rest sites or with Green cards.
+
+---
+
+## 7.5 Relics
+
+Passive trinkets. Each elite offers a choice of 3. Reliquary boxes have a 15% chance to hold one, and the merchant sells one for 70 gold.
+
+| Relic | Effect |
+|---|---|
+| Cracked Inkwell | Blood ink costs 1 less HP to cast |
+| Scrivener's Thimble | Paper cards last 2 casts longer |
+| Moth Lantern | Oil burns half as fast, but Dread rises faster |
+| Tolling Bell | Enemies start every fight with 1 Weak |
+| Silver Needle | Your first attack each turn ignores Block |
+| Chapel Candle | Heal 4 HP after every fight |
+| Raven Quill | Draw 2 extra cards on the first turn of each fight |
+| Heart Locket | +10 max HP |
+| Bone Dice | Monsters drop an extra item a third of the time |
+| Ink Prism | Ink reactions are twice as strong |
 
 ---
 
@@ -258,7 +298,8 @@ All sound is synthesized in the browser (Web Audio), so there are no audio files
 ## 10. Meta-Progression
 
 - **The Grimoire persists.** Every recipe you discover, by crafting it or from the Trapped Scribe, is saved in the browser and known in every later run. The title screen opens the Grimoire and shows lifetime stats (runs, victories, deepest floor). "Forget everything" wipes it after a second tap.
-- Planned: unlock new ingredients into the loot pool by reaching milestones.
+- **Runs autosave** to the browser. The title screen offers Continue (showing the floor and HP). Closing the tab mid-fight restarts that fight from its beginning; an unresolved event or relic choice is waiting when you return. Starting a new run over a saved one needs a second tap.
+- Planned: unlockable Inkbinder variants (Bloodscribe, Ash Monk, Gilded Heretic) and milestone unlocks.
 - No permanent stat boosts, so each run stays fair.
 
 ---
@@ -282,4 +323,5 @@ Decided: random encounters stay as they are (driven by Dread). Lantern oil is in
 4. ~~Exploration floors, scavenging, refining, monster parts, re-inscribe and mend~~ (done)
 5. ~~Pixel art pass and lantern oil~~ (done)
 6. ~~Persistent Grimoire~~, ~~a fourth floor, new creatures, enchantments, recipes and events~~, ~~animation and sound~~ (done)
-7. Milestone unlocks, more events, polish.
+7. ~~Ink reactions, relics, save and continue~~ (done)
+8. Unlockable Inkbinder variants, milestone unlocks, more events, polish.

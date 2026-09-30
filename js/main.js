@@ -1,16 +1,17 @@
 import {
   INK_COLORS, INK_MATERIALS, CARD_MATERIALS, ENCHANTMENTS, INGREDIENTS, RECIPES, ENEMIES, REPAIR_PRICE,
-  REGIONS, REFINING, RAW_MATERIALS, LANTERN, EVENTS,
+  REGIONS, REFINING, RAW_MATERIALS, LANTERN, EVENTS, RELICS, REACTIONS,
 } from './data.js';
 import { resolveEvent } from './events.js';
-import { loadMeta, learn, recordRun, forget, loadSoundPref, saveSoundPref } from './meta.js';
+import { loadMeta, learn, recordRun, forget, loadSoundPref, saveSoundPref, saveRunText, loadRunText, clearRun } from './meta.js';
 import { unlock, sfx, setEnabled, isEnabled, startAmbient, stopAmbient } from './audio.js';
 import { spriteURL, glyphURL } from './sprites.js';
 import { craftCard, validateBlueprint, describeCard, cardComponents } from './crafting.js';
-import { createCombat, playCard, endTurn, canPlay, effectiveCost, currentMove } from './combat.js';
+import { createCombat, playCard, endTurn, canPlay, effectiveCost, currentMove, previewReaction } from './combat.js';
 import {
   createRun, currentRegion, descend, craftIntoDeck, salvageCard, rollRewards, applyRewards, rollShop,
   refine, canRefine, reinscribe, mend, rest, scavenge, openChest, burnCard, burnValue, resurface,
+  gainRelic, relicChoices, hasRelic, serializeRun, deserializeRun,
 } from './run.js';
 import { step, findPath, objectAt, BLOCKING } from './world.js';
 import { createExploreView, objectName } from './explore-view.js';
@@ -39,6 +40,7 @@ let standingOn = null;
 let eventCtx = null;  // { obj, id, result }
 let lastScreen = null;
 let forgetArmed = false;
+let abandonArmed = false;
 let meta = loadMeta();
 setEnabled(loadSoundPref());
 
@@ -67,8 +69,11 @@ function sigil(colors) {
 }
 
 const portrait = (name, cls = '') => `<img class="px portrait ${cls}" src="${spriteURL(name)}" alt="">`;
+const relicIcon = id => `<span class="relic" title="${RELICS[id].name}: ${RELICS[id].desc}">${portrait(`relic_${id}`)}</span>`;
+const relicCard = (id, act = '') => `<button class="reliccard" ${act}>${portrait(`relic_${id}`, 'relicart')}<b>${RELICS[id].name}</b><span>${RELICS[id].desc}</span></button>`;
+const inkPair = key => key.split('+').map(c => `<img class="px inkpip" src="${glyphURL(c)}" alt="${INK_COLORS[c].short}">`).join('');
 
-function cardHtml(card, { cost = card.cost, disabled = false, action = '', extra = '' } = {}) {
+function cardHtml(card, { cost = card.cost, disabled = false, action = '', extra = '', cls = '' } = {}) {
   const mat = card.cardMat || 'starter';
   const lines = describeCard(card).map(l => `<li>${l}</li>`).join('');
   const ench = card.enchants.map(e => `<span class="tag" title="${ENCHANTMENTS[e].desc}">${ENCHANTMENTS[e].name}</span>`).join('');
@@ -76,7 +81,7 @@ function cardHtml(card, { cost = card.cost, disabled = false, action = '', extra
   const tag = action ? 'button' : 'div';
   // Wordy cards get a compact layout so their text stays on the card.
   const dense = describeCard(card).length + (card.flavor ? 1 : 0) >= 4;
-  return `<${tag} class="card mat-${mat}${card.recipeId ? ' named' : ''}${dense ? ' dense' : ''}${disabled ? ' disabled' : ''}" ${action} ${disabled && action ? 'aria-disabled="true"' : ''}>
+  return `<${tag} class="card mat-${mat}${card.recipeId ? ' named' : ''}${dense ? ' dense' : ''}${disabled ? ' disabled' : ''}${cls ? ` ${cls}` : ''}" ${action} ${disabled && action ? 'aria-disabled="true"' : ''}>
     <span class="cost${cost < card.cost ? ' free' : ''}">${cost}</span>
     ${card.hpCost ? `<span class="blood" title="Costs ${card.hpCost} HP">${card.hpCost}</span>` : ''}
     <span class="cname">${card.name}</span>
@@ -135,6 +140,7 @@ function renderBar() {
       <span class="stat deck" title="Cards in deck">Deck <b>${run.deck.length}</b></span>
       <span class="stat dread" title="Dread rises as you wander. Monsters find you more often.">Dread <b>${run.dread}</b></span>
     </span>
+    ${run.relics.length ? `<span class="relics">${run.relics.map(relicIcon).join('')}</span>` : ''}
     ${soundButton()}`;
 }
 
@@ -157,11 +163,22 @@ function renderTitle() {
       <li><b>Refine and craft</b> at writing desks. Monster parts become enchantments.</li>
     </ul>
     <div class="title-actions">
-      <button class="primary" data-act="begin">Descend into the chapel</button>
+      ${savedSummary() ? `<button class="primary" data-act="continue">Continue: ${savedSummary()}</button>
+        <button data-act="begin">${abandonArmed ? 'Tap again to abandon it and start over' : 'New run'}</button>`
+        : '<button class="primary" data-act="begin">Descend into the chapel</button>'}
       <button data-act="codex">Your Grimoire (${meta.grimoire.length} of ${RECIPES.length})</button>
     </div>
     ${meta.runs ? `<p class="note">Runs: ${meta.runs} · Victories: ${meta.wins} · Deepest: ${meta.deepest >= 0 ? REGIONS[meta.deepest].name : 'none'}</p>` : ''}
   </section>`;
+}
+
+function savedSummary() {
+  const text = loadRunText();
+  if (!text) return null;
+  try {
+    const { run: r } = JSON.parse(text);
+    return `${REGIONS[r.regionIdx].name}, ${r.hp}/${r.maxHp} HP`;
+  } catch { return null; }
 }
 
 function renderCodex() {
@@ -179,6 +196,11 @@ function renderCodex() {
       <p>Every spell you discover is written here and stays known in every run after. ${meta.grimoire.length} of ${RECIPES.length} found.</p>
     </header>
     <ul class="codexlist">${rows}</ul>
+    <h3 class="section-title">Ink reactions</h3>
+    <p class="note">Cast an inscribed card right after one of a different ink, or cast a two-ink card, to set off the reaction for that pair. Starter cards do not react.</p>
+    <ul class="reactlist">${Object.entries(REACTIONS).map(([k, r]) => `<li><span class="pair">${inkPair(k)}</span><b>${r.name}</b><span>${r.desc}</span></li>`).join('')}</ul>
+    <h3 class="section-title">Relics</h3>
+    <ul class="reliclist">${Object.keys(RELICS).map(id => `<li>${portrait(`relic_${id}`, 'relicart')}<div><b>${RELICS[id].name}</b><span>${RELICS[id].desc}</span></div></li>`).join('')}</ul>
     <footer class="screen-foot">
       <button class="danger" data-act="forget">${forgetArmed ? 'Tap again to erase your Grimoire and records' : 'Forget everything'}</button>
       <button class="primary" data-act="restart">Back</button>
@@ -292,7 +314,7 @@ function moveBy(dx, dy) {
   standingOn = objectAt(run.world, run.world.px, run.world.py);
   if (res.object) { walkPath = null; interact(res.object); }
   else if (res.encounter) { walkPath = null; startFight(res.encounter, { kind: 'random' }); }
-  if (screen === 'explore') { renderSide(); renderBar(); }
+  if (screen === 'explore') { renderSide(); renderBar(); autosave(); }
   else render();
 }
 
@@ -311,7 +333,11 @@ function interact(obj) {
       logExplore(`The reliquary opens: ${listItems(r.items)} and ${r.gold} gold.`);
       r.items.forEach(id => view?.float(obj.x, obj.y, itemName(id), '#e0b95c'));
       view?.float(obj.x, obj.y, `+${r.gold} gold`, '#f0d27a');
-      sfx('chest');
+      if (r.relic) {
+        logExplore(`Beneath the rest, wrapped in cloth: ${RELICS[r.relic].name}. ${RELICS[r.relic].desc}`);
+        view?.float(obj.x, obj.y, RELICS[r.relic].name, '#c3a2de');
+        sfx('relic');
+      } else sfx('chest');
       standingOn = null;
       break;
     }
@@ -321,7 +347,7 @@ function interact(obj) {
       screen = 'bench';
       break;
     case 'merchant':
-      merchant = obj; merchant.stock ||= rollShop(); notice = null;
+      merchant = obj; merchant.stock ||= rollShop(Math.random, run); notice = null;
       screen = 'shop';
       break;
     case 'elite':
@@ -346,6 +372,7 @@ function interact(obj) {
 
 function startFight(enemies, ctx) {
   fightCtx = { ...ctx, enemies };
+  saveNow({ fight: { enemies, kind: ctx.kind, objId: ctx.obj?.id ?? null } });
   combat = createCombat(run, enemies, Math.random, { hpMult: currentRegion(run).hpMult });
   target = 0;
   screen = 'fight';
@@ -521,8 +548,14 @@ function renderFight() {
 
   const hand = c.hand.map(k => {
     const why = canPlay(c, k);
-    return cardHtml(k, { cost: effectiveCost(c, k), disabled: !!why, action: `data-act="play" data-uid="${k.uid}" title="${why || 'Cast'}"` });
+    const react = previewReaction(c, k);
+    return cardHtml(k, {
+      cost: effectiveCost(c, k), disabled: !!why, cls: react ? 'reacts' : '',
+      action: `data-act="play" data-uid="${k.uid}" title="${why || (react ? `Cast. Sets off ${REACTIONS[react].name}: ${REACTIONS[react].desc}` : 'Cast')}"`,
+      extra: react ? `<span class="reacttag">${REACTIONS[react].name}</span>` : '',
+    });
   }).join('');
+  const lastInk = c.lastColors ? `<span class="chip ink">Last ink ${c.lastColors.map(col => `<img class="px inkpip" src="${glyphURL(col)}" alt="${INK_COLORS[col].short}">`).join('')}</span>` : '';
 
   const mana = Array.from({ length: Math.max(run.energy, c.player.energy) }, (_, i) => `<i class="${i < c.player.energy ? 'on' : ''}"></i>`).join('');
   const recent = c.log.slice(-7).map(l => `<li>${l}</li>`).join('');
@@ -536,7 +569,8 @@ function renderFight() {
       <div class="panel player">
         <span class="pname">${portrait('player', 'me')}The Inkbinder</span>
         ${bars(run.hp, run.maxHp, 'you')}
-        <span class="chips">${statusChips(c.player)}${c.player.nextFree ? '<span class="chip free">Next card free</span>' : ''}</span>
+        <span class="chips">${statusChips(c.player)}${c.player.nextFree ? '<span class="chip free">Next card free</span>' : ''}${lastInk}</span>
+        ${run.relics.length ? `<span class="relics">${run.relics.map(relicIcon).join('')}</span>` : ''}
         <span class="mana" title="Mana: ${c.player.energy}">${mana}<em>${c.player.energy} mana</em></span>
         <span class="piles">Draw ${c.drawPile.length} · Discard ${c.discard.length}${c.exhaust.length ? ` · Exhausted ${c.exhaust.length}` : ''} · Turn ${c.turn}</span>
       </div>
@@ -555,14 +589,21 @@ function renderRewards() {
   <section class="rewards center">
     <h2>The page falls silent</h2>
     <p>You search what's left.</p>
-    <ul class="loots">${items}${salv}${r.gold ? `<li class="loot gold">${r.gold} gold</li>` : ''}</ul>
+    <ul class="loots">${items}${salv}${r.gold ? `<li class="loot gold">${r.gold} gold</li>` : ''}${r.healed ? `<li class="loot heal">Chapel Candle: +${r.healed} HP</li>` : ''}</ul>
     ${!items && !salv && !r.gold ? '<p>Nothing worth keeping.</p>' : ''}
-    <button class="primary" data-act="toMap">Back to exploring</button>
+    ${r.relicChoices?.length && !r.relicTaken ? `
+      <h3 class="section-title">The guardian kept something. Choose one.</h3>
+      <div class="relicpick">${r.relicChoices.map(id => relicCard(id, `data-act="takeRelic" data-id="${id}"`)).join('')}</div>
+      <button data-act="toMap">Leave them all</button>`
+      : `${r.relicTaken ? `<p class="notice rare">You take the ${RELICS[r.relicTaken].name}.</p>` : ''}<button class="primary" data-act="toMap">Back to exploring</button>`}
   </section>`;
 }
 
 function renderShop() {
-  const stock = merchant.stock.map((s, i) => `<button class="ware r-${INGREDIENTS[s.id].rarity}" data-act="buy" data-idx="${i}" ${s.sold || run.gold < s.price ? 'disabled' : ''}>
+  const stock = merchant.stock.map((s, i) => s.relic
+    ? `<button class="ware relicware" data-act="buy" data-idx="${i}" ${s.sold || run.gold < s.price || hasRelic(run, s.relic) ? 'disabled' : ''} title="${RELICS[s.relic].desc}">
+      ${portrait(`relic_${s.relic}`, 'wareart')}<span>${RELICS[s.relic].name}</span><small>relic</small><b>${s.sold ? 'Sold' : s.price + ' gold'}</b></button>`
+    : `<button class="ware r-${INGREDIENTS[s.id].rarity}" data-act="buy" data-idx="${i}" ${s.sold || run.gold < s.price ? 'disabled' : ''}>
       <span>${itemName(s.id)}</span><small>${INGREDIENTS[s.id].kind === 'raw' ? 'raw material' : INGREDIENTS[s.id].kind === 'enchant' ? ENCHANTMENTS[INGREDIENTS[s.id].key].name : INGREDIENTS[s.id].rarity}</small><b>${s.sold ? 'Sold' : s.price + ' gold'}</b></button>`).join('');
   const worn = run.deck.filter(k => Number.isFinite(k.durability) && k.durability < k.maxDurability);
   const repairs = worn.map(k => cardHtml(k, {
@@ -657,6 +698,26 @@ function render() {
     case 'codex': renderCodex(); break;
   }
   if (changed && screen !== 'explore') app.firstElementChild?.classList.add('enter');
+  autosave();
+}
+
+// ---------- saving ----------
+
+let saveTimer = 0;
+function saveNow(extra = {}) {
+  if (!run || ['won', 'lost', 'title', 'codex'].includes(screen) && !extra.fight) return;
+  const resume = { log: exploreLog.slice(-5), ...extra };
+  if (screen === 'fight' && !extra.fight && fightCtx) {
+    resume.fight = { enemies: fightCtx.enemies, kind: fightCtx.kind, objId: fightCtx.obj?.id ?? null };
+  }
+  if (screen === 'event' && eventCtx && !eventCtx.result) resume.eventObjId = eventCtx.obj.id;
+  if (screen === 'rewards' && rewards?.relicChoices?.length && !rewards.relicTaken) resume.relicChoices = rewards.relicChoices;
+  try { saveRunText(serializeRun(run, resume)); } catch { /* ignore */ }
+}
+function autosave() {
+  if (!run || screen === 'fight') return; // the fight was saved when it began
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => saveNow(), 250);
 }
 
 // ---------- flow ----------
@@ -669,7 +730,8 @@ function afterCombatAction() {
   if (combat.over === 'lost') { endRun(false); return; }
   if (fightCtx.kind === 'boss') { endRun(true); return; }
   if (fightCtx.obj) fightCtx.obj.gone = true;
-  rewards = rollRewards(fightCtx.enemies, { elite: fightCtx.kind === 'elite' });
+  rewards = rollRewards(fightCtx.enemies, { elite: fightCtx.kind === 'elite', dice: hasRelic(run, 'dice') });
+  if (fightCtx.kind === 'elite') rewards.relicChoices = relicChoices(run, 3);
   rewards.salvaged = combat.salvaged;
   applyRewards(run, rewards);
   logExplore(fightCtx.kind === 'elite' ? `The ${ENEMIES[fightCtx.enemies[0]].name} falls.` : 'You survive the encounter.');
@@ -677,6 +739,7 @@ function afterCombatAction() {
 }
 
 function endRun(won) {
+  clearRun();
   recordRun(meta, { won, depth: run.regionIdx });
   stopAmbient();
   sfx(won ? 'win' : 'lose');
@@ -690,6 +753,9 @@ function noteDiscovery(r) {
 
 const actions = {
   begin() {
+    if (loadRunText() && !abandonArmed) { abandonArmed = true; return; }
+    abandonArmed = false;
+    clearRun();
     run = createRun(undefined, meta.grimoire);
     run.startKnown = meta.grimoire.length;
     startAmbient(0);
@@ -698,7 +764,37 @@ const actions = {
     standingOn = objectAt(run.world, run.world.px, run.world.py);
     screen = 'explore';
   },
-  restart() { run = null; forgetArmed = false; stopAmbient(); screen = 'title'; },
+  restart() { run = null; forgetArmed = false; abandonArmed = false; stopAmbient(); screen = 'title'; },
+  continue() {
+    let loaded;
+    try { loaded = deserializeRun(loadRunText()); } catch { clearRun(); return; }
+    run = loaded.run;
+    const res = loaded.resume || {};
+    run.startKnown ??= meta.grimoire.length;
+    for (const id of meta.grimoire) run.grimoire.add(id);
+    exploreLog = res.log || ['You pick up where you left off.'];
+    standingOn = objectAt(run.world, run.world.px, run.world.py);
+    startAmbient(run.regionIdx);
+    screen = 'explore';
+    if (res.fight) {
+      const obj = run.world.objects.find(o => o.id === res.fight.objId) || null;
+      startFight(res.fight.enemies, { kind: res.fight.kind, obj });
+      logExplore('The fight you fled from starts over.');
+    } else if (res.eventObjId != null) {
+      const obj = run.world.objects.find(o => o.id === res.eventObjId);
+      if (obj && !obj.gone) { eventCtx = { obj, id: obj.event, result: null }; screen = 'event'; }
+    } else if (res.relicChoices?.length) {
+      rewards = { items: [], gold: 0, relicChoices: res.relicChoices };
+      screen = 'rewards';
+    }
+  },
+  takeRelic({ id }) {
+    if (!rewards?.relicChoices?.includes(id) || rewards.relicTaken) return;
+    gainRelic(run, id);
+    rewards.relicTaken = id;
+    sfx('relic');
+    logExplore(`You take the ${RELICS[id].name}.`);
+  },
   codex() { forgetArmed = false; screen = 'codex'; },
   forget() {
     if (!forgetArmed) { forgetArmed = true; return; }
@@ -813,8 +909,14 @@ const actions = {
     const s = merchant.stock[+idx];
     if (s.sold || run.gold < s.price) return;
     run.gold -= s.price;
-    run.inventory[s.id] = (run.inventory[s.id] || 0) + 1;
     s.sold = true;
+    if (s.relic) {
+      gainRelic(run, s.relic);
+      sfx('relic');
+      notice = { text: `The ${RELICS[s.relic].name} is yours. ${RELICS[s.relic].desc}`, tone: 'rare' };
+      return;
+    }
+    run.inventory[s.id] = (run.inventory[s.id] || 0) + 1;
     sfx('pickup');
     notice = { text: `Bought ${itemName(s.id)}.` };
   },
@@ -833,6 +935,7 @@ function snapshot() {
   return {
     enemies: combat.enemies.map(e => ({ hp: e.hp })),
     hp: run.hp, block: combat.player.block,
+    reactions: combat.lastReaction?.n,
   };
 }
 
@@ -888,6 +991,15 @@ function combatFx(before) {
     floatAt(playerEl, `+${combat.player.block - before.block} Block`, 'blk');
   }
   if (killed) sfx('kill'); else if (hit) sfx('hit');
+  const rx = combat.lastReaction;
+  if (rx && rx.n !== before.reactions) {
+    sfx('react');
+    const banner = document.createElement('div');
+    banner.className = 'reaction-banner';
+    banner.innerHTML = `<span>${inkPair(rx.key)}</span>${rx.name}`;
+    (app.querySelector('.enemies') || app).appendChild(banner);
+    setTimeout(() => banner.remove(), 1400);
+  }
 }
 
 document.addEventListener('click', e => {
