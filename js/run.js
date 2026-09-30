@@ -5,13 +5,13 @@ import {
 import { makeStarterCard, craftCard, validateBlueprint, blueprintIngredients, salvageRoll } from './crafting.js';
 import { generateRegion, lightRadius, reveal } from './world.js';
 
-export function createRun(seed = Math.floor(Math.random() * 2 ** 31)) {
+export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecipes = []) {
   const run = {
     ...PLAYER_START,
     seed,
     deck: STARTER_DECK.map(makeStarterCard),
     inventory: { ...STARTING_INVENTORY },
-    grimoire: new Set(), // recipe ids discovered this run
+    grimoire: new Set(knownRecipes), // recipe ids known, including ones from earlier runs
     dread: 0,
     oil: LANTERN.max,
     regionIdx: 0,

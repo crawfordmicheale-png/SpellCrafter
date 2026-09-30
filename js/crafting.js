@@ -132,6 +132,8 @@ export function describeCard(card) {
   if (card.hpCost) lines.push(`Costs ${card.hpCost} HP.`);
   if (card.purify) lines.push('Purify 1 debuff.');
   if (card.goldOnCast) lines.push(`Gain ${card.goldOnCast} gold.`);
+  if (card.enchants.includes('hallowed')) lines.push('Gain 4 Block.');
+  if (card.enchants.includes('piercing')) lines.push('Ignores Block.');
   return lines;
 }
 

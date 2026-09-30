@@ -212,3 +212,76 @@ test('burning cards and resurfacing refuel the lantern', () => {
   assert.ok(resurface(run).error);
   assert.ok(run.world.objects.some(o => o.type === 'up' && o.x === run.world.px && o.y === run.world.py));
 });
+
+test('events resolve their choices', async () => {
+  const { resolveEvent } = await import('../js/events.js');
+  const run = createRun(7);
+  run.hp = 30;
+  let r = resolveEvent(run, 'shrine', 'pray');
+  assert.equal(run.hp, 42);
+  assert.equal(run.dread, 10);
+  run.oil = 50;
+  resolveEvent(run, 'shrine', 'take');
+  assert.equal(run.oil, 80);
+  assert.equal(run.maxHp, 56);
+  r = resolveEvent(run, 'scribe', 'free', () => 0);
+  assert.ok(r.learned);
+  assert.ok(run.grimoire.has(r.learned));
+  r = resolveEvent(run, 'lanterns', 'cut', () => 0);
+  assert.ok(Array.isArray(r.fight) && r.fight.length);
+  r = resolveEvent(run, 'well', 'drink', () => 0.1);
+  assert.equal(r.items.length, 2);
+  assert.match(resolveEvent(run, 'well', 'leave').text, /leave/i);
+});
+
+test('the Grimoire and records persist between runs', async () => {
+  const { loadMeta, learn, recordRun, forget } = await import('../js/meta.js');
+  const data = {};
+  const store = { getItem: k => data[k] ?? null, setItem: (k, v) => { data[k] = v; } };
+  const meta = loadMeta(store);
+  assert.deepEqual(meta.grimoire, []);
+  learn(meta, 'kindling', store);
+  learn(meta, 'kindling', store);
+  recordRun(meta, { won: false, depth: 2 }, store);
+  const again = loadMeta(store);
+  assert.deepEqual(again.grimoire, ['kindling']);
+  assert.equal(again.runs, 1);
+  assert.equal(again.deepest, 2);
+  const run = createRun(1, again.grimoire);
+  run.inventory.ink_blood = 1;
+  assert.equal(craftIntoDeck(run, { colors: ['red'], inkMat: 'blood', cardMat: 'paper' }).discovered, false);
+  forget(store);
+  assert.deepEqual(loadMeta(store).grimoire, []);
+  assert.deepEqual(loadMeta({ getItem() { throw new Error('blocked'); } }).grimoire, []);
+});
+
+test('piercing ignores block and hallowed grants block', () => {
+  const run = createRun(1);
+  Object.assign(run.inventory, { ench_piercing: 1, ench_hallowed: 1, color_red: 2, mat_wood: 2, ink_charcoal: 2 });
+  const { card: pierce } = craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'wood', enchants: ['piercing'] });
+  const { card: holy } = craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'wood', enchants: ['hallowed'] });
+  const c = createCombat(run, ['grimoire'], seq(0.99));
+  c.player.energy = 9;
+  c.enemies[0].block = 20;
+  const hp = c.enemies[0].hp;
+  c.hand.push(pierce); playCard(c, pierce.uid);
+  assert.equal(c.enemies[0].hp, hp - 5);
+  assert.equal(c.enemies[0].block, 20);
+  const block = c.player.block;
+  c.hand.push(holy); playCard(c, holy.uid);
+  assert.equal(c.player.block, block + 4);
+});
+
+test('floors place their events', () => {
+  let events = 0;
+  for (let seed = 1; seed <= 10; seed++) {
+    for (let r = 0; r < REGIONS.length; r++) {
+      const w = generateRegion(r, seed);
+      const ev = w.objects.filter(o => o.type === 'event');
+      assert.equal(new Set(ev.map(o => o.event)).size, ev.length);
+      events += ev.length;
+    }
+  }
+  assert.ok(events >= 50);
+  assert.equal(REGIONS.length, 4);
+});

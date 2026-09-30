@@ -100,6 +100,8 @@ Enchantments are **monster parts**. You can only get one by killing (or finding)
 | Hound Fang | Leech | Heal for 25% of the damage this card deals | Ashen Hound |
 | Grave Candle | Siphon | Refund 1 mana if this card kills an enemy | Candle Ghoul |
 | Ghoul Tongue | Hungering | +2 power each time it's cast in the same fight | Candle Ghoul |
+| Weaver's Needle | Piercing | Damage ignores Block | Bone Weaver |
+| Saint's Knucklebone | Hallowed | Also gain 4 Block when cast | The Ossuary Saint |
 
 ---
 
@@ -112,6 +114,7 @@ Each floor is a top-down dungeon with fog of war and a lantern radius. Scavenge 
 |---|---|---|---|---|
 | The Chapel Ruins | Ash, Bone Shards, Rotten Vestments, Old Timber, Grave Soil | Bloodroot, Grave Moss | The Bell Warden | Yes |
 | The Drowned Archive | Drowned Kelp, Grave Moss, Rotten Vestments | Slate, Silver Ore | The Pale Scrivener | Yes |
+| The Catacombs | Bone Shards, Grave Soil, Ash | Slate, Silver Ore | The Ossuary Saint | Yes |
 | The Last Library | Bloodroot, Grave Soil | Gold Leaf, Silver Ore, Slate | (Boss) | No |
 
 Reliquary boxes (chests) hold gold plus rare raws or monster parts. The elite guards a room and drops rare materials, including **Heartblood**.
@@ -152,11 +155,21 @@ Your lantern is your light radius, and it runs on oil.
 - **Resurface** from the up-stairs where you arrived on each floor: a full refill, but the climb back down costs 30 Dread. You return to the same floor.
 - This makes cheap cards double as fuel, and it gives every card a second use once it has served its purpose.
 
-### 4.5 Merchant
+### 4.5 Events
+Each floor has 1–2 events, marked on the map with a purple glow. Every event offers a choice with a cost.
+
+| Event | Choices |
+|---|---|
+| Candle Shrine | Pray: heal 12, +10 Dread. Take the candles: +30 oil, lose 4 max HP. |
+| The Trapped Scribe | Lift the shelf: lose 8 HP, learn a spell for your Grimoire. Take his purse: +35 gold, +25 Dread. Walk on: +5 Dread. |
+| The Ink Well | Drink: 50% two monster parts, 50% lose 10 HP. Fill your bottles: two random inks, +10 Dread. |
+| Hanged Lanterns | Cut one down: +40 oil, then a fight. Climb for it: +25 oil, lose 6 HP. |
+
+### 4.6 Merchant
 - Sells raws, refined ingredients and monster parts. Prices are set by rarity.
 - **Repair** a worn card for gold.
 
-### 4.6 Salvage and breakage
+### 4.7 Salvage and breakage
 - At a desk, dismantle one card per visit to recover one random component.
 - Cards that break from wear have a 50% chance to leave a component behind.
 
@@ -187,6 +200,10 @@ Some exact combinations make **named spells** with unique effects beyond the for
 | Red + White + Silver ink + Stone + Echo | **Bellstrike:** Deal 10, gain 10 Block (echoes) |
 | Black + Blue + Blood + Silver card | **Mind Leech:** Apply 9 Poison, draw 2 |
 | Black + Green + Charcoal + Wood | **Gravebloom:** Apply 5 Poison, heal 4 |
+| Green + White + Silver ink + Silver card + Hallowed | **Saint's Litany:** Gain 12 Block, heal 5 |
+| Black + Red + Blood + Wood + Piercing | **Needlestorm:** Deal 6 twice, apply 3 Poison (ignores Block) |
+| Blue + White + Charcoal + Paper | **Drowned Hymn:** Draw 2, gain 5 Block |
+| Red + Gold ink + Gold card | **Ember Rite:** Deal 9 to ALL enemies |
 
 - Recipes are hidden until you craft them the first time, then saved to a **Grimoire** (per run in the prototype; persistent across runs is planned).
 - Re-inscribing an existing card can complete a recipe that needs an enchantment (Bellstrike).
@@ -205,7 +222,7 @@ Some exact combinations make **named spells** with unique effects beyond the for
 
 ## 8. Run Structure
 
-- 3 floors: The Chapel Ruins → The Drowned Archive → The Last Library (boss). Enemies get 15% and then 30% more HP on the lower floors.
+- 4 floors: The Chapel Ruins → The Drowned Archive → The Catacombs → The Last Library (boss). Enemy HP scales ×1, ×1.1, ×1.2, ×1.3 by floor.
 - Each floor: ~11 rooms, 12–14 scavenge spots, 2–3 reliquary boxes, a writing desk near the start, a merchant, an elite, and the stairs in the farthest room.
 - **You can craft only at writing desks.** Each desk allows one rest (heal 30% max HP).
 - Descending the stairs restores 20% max HP.
@@ -227,12 +244,21 @@ Some exact combinations make **named spells** with unique effects beyond the for
 - Card frames show their material: paper, wood grain, speckled stone, silver and gold sheen.
 - Lighting is drawn in stepped bands around the lantern, with a slight flicker.
 
+### 9.1 Animation
+- The Inkbinder glides between tiles with a step bob; the camera stays locked to the sprite-pixel grid so nothing shimmers.
+- Elites, the boss and events hover gently. Pickups float up as text over the tile.
+- In fights, cast cards fly out of your hand, enemies shake and flash white when hit and sink when killed, damage and Block numbers rise, and a red vignette flashes when you are hurt.
+- Everything respects the reduced-motion setting.
+
+### 9.2 Sound
+All sound is synthesized in the browser (Web Audio), so there are no audio files. Effects cover footsteps, pickups, reliquaries, casting, hits, kills, Block, hurt, healing, crafting (quill scratch and chime), discovering a spell, burning a card, stairs, encounters, events, victory and defeat. Each floor has its own ambient drone with echoing water drips. A Sound on/off toggle sits in the top bar and is remembered.
+
 ---
 
 ## 10. Meta-Progression
 
-- Grimoire (discovered recipes) persists.
-- Unlock new ingredients into the loot pool (e.g., new ink colors, new enchantments) by reaching milestones.
+- **The Grimoire persists.** Every recipe you discover, by crafting it or from the Trapped Scribe, is saved in the browser and known in every later run. The title screen opens the Grimoire and shows lifetime stats (runs, victories, deepest floor). "Forget everything" wipes it after a second tap.
+- Planned: unlock new ingredients into the loot pool by reaching milestones.
 - No permanent stat boosts, so each run stays fair.
 
 ---
@@ -255,6 +281,5 @@ Decided: random encounters stay as they are (driven by Dread). Lantern oil is in
 3. ~~Crafting bench with live preview~~ (done)
 4. ~~Exploration floors, scavenging, refining, monster parts, re-inscribe and mend~~ (done)
 5. ~~Pixel art pass and lantern oil~~ (done)
-6. Persistent Grimoire and unlocks across runs.
-7. More floors, enemies, recipes and events. Balance pass.
-8. Animation, sound, polish.
+6. ~~Persistent Grimoire~~, ~~a fourth floor, new creatures, enchantments, recipes and events~~, ~~animation and sound~~ (done)
+7. Milestone unlocks, more events, polish.

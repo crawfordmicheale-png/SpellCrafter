@@ -1,4 +1,4 @@
-import { REGIONS, RAW_MATERIALS, ENCOUNTER, LANTERN } from './data.js';
+import { REGIONS, RAW_MATERIALS, ENCOUNTER, LANTERN, EVENTS } from './data.js';
 
 export const WALL = 0, FLOOR = 1;
 export const MAP_W = 46, MAP_H = 32;
@@ -111,6 +111,13 @@ export function generateRegion(regionIdx, seed) {
   for (let i = 0; i < region.chests; i++) {
     const spot = freeTileIn(rooms[randInt(rng, 1, rooms.length - 1)]);
     if (spot) place('chest', ...spot);
+  }
+  const eventPool = Object.keys(EVENTS);
+  for (let i = 0; i < (region.events || 0) && eventPool.length; i++) {
+    const spot = freeTileIn(rooms[randInt(rng, 1, rooms.length - 1)]);
+    if (!spot) continue;
+    const event = eventPool.splice(randInt(rng, 0, eventPool.length - 1), 1)[0];
+    place('event', ...spot, { event });
   }
   for (let i = 0; i < region.nodes; i++) {
     const spot = freeTileIn(rooms[randInt(rng, 0, rooms.length - 1)]);
