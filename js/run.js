@@ -1,11 +1,12 @@
 import {
   ENEMIES, INGREDIENTS, PRICES, REGIONS, STARTER_DECK, STARTING_INVENTORY, PLAYER_START, REFINING,
   CARD_MATERIALS, BENCH_REST_HEAL, RAW_MATERIALS, DESCEND_HEAL, LANTERN, RELICS, RELIC_PRICE, CHEST_RELIC_CHANCE,
+  VARIANTS, CORRUPTION,
 } from './data.js';
-import { makeStarterCard, craftCard, validateBlueprint, blueprintIngredients, salvageRoll, ensureUidAbove } from './crafting.js';
+import { makeStarterCard, craftCard, validateBlueprint, blueprintIngredients, salvageRoll, ensureUidAbove, applyWear } from './crafting.js';
 import { generateRegion, lightRadius, reveal } from './world.js';
 
-export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecipes = []) {
+export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecipes = [], variant = 'inkbinder') {
   const run = {
     ...PLAYER_START,
     seed,
@@ -18,10 +19,32 @@ export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecip
     world: null,
     salvagedHere: false,
     relics: [],
+    variant,
+    corruption: 0,
+    oilMax: LANTERN.max,
+    perks: [],
   };
+  const { inventory = {}, relics = [], ...rest } = VARIANTS[variant]?.start || {};
+  Object.assign(run, rest);
+  for (const [id, n] of Object.entries(inventory)) run.inventory[id] = (run.inventory[id] || 0) + n;
+  for (const id of relics) gainRelic(run, id);
   enterWorld(run, generateRegion(0, seed));
   return run;
 }
+
+export const oilMax = run => run.oilMax ?? LANTERN.max;
+
+// Which Inkbinders a player's lifetime progress has unlocked.
+export function isUnlocked(meta, variant) {
+  const u = VARIANTS[variant]?.unlock;
+  if (!u) return true;
+  if (u.type === 'deepest') return (meta.deepest ?? -1) >= u.value;
+  if (u.type === 'grimoire') return (meta.grimoire?.length || 0) >= u.value;
+  return false;
+}
+
+export const corruptionState = run => (run.corruption >= CORRUPTION.forsaken ? 'Forsaken'
+  : run.corruption >= CORRUPTION.tainted ? 'Tainted' : null);
 
 function enterWorld(run, world) {
   run.world = world;
@@ -61,11 +84,11 @@ export function burnCard(run, cardUid) {
   if (!card) return { error: 'That card is not in your deck.' };
   const value = burnValue(card);
   if (!value) return { error: `${CARD_MATERIALS[card.cardMat].name} will not burn.` };
-  if (run.oil >= LANTERN.max) return { error: 'Your lantern is already full.' };
+  if (run.oil >= oilMax(run)) return { error: 'Your lantern is already full.' };
   if (run.deck.length <= LANTERN.minDeck) return { error: 'You cannot spare another card.' };
   run.deck = run.deck.filter(k => k.uid !== cardUid);
   const before = run.oil;
-  run.oil = Math.min(LANTERN.max, run.oil + value);
+  run.oil = Math.min(oilMax(run), run.oil + value);
   run.world.radius = lightRadius(run.oil);
   reveal(run.world);
   return { oil: run.oil - before, card };
@@ -73,8 +96,8 @@ export function burnCard(run, cardUid) {
 
 // Climb back to the surface to refill the lantern. You return to the same spot.
 export function resurface(run) {
-  if (run.oil >= LANTERN.max) return { error: 'Your lantern is already full.' };
-  run.oil = LANTERN.max;
+  if (run.oil >= oilMax(run)) return { error: 'Your lantern is already full.' };
+  run.oil = oilMax(run);
   run.dread += LANTERN.resurfaceDread;
   run.world.radius = lightRadius(run.oil);
   reveal(run.world);
@@ -107,8 +130,9 @@ const has = (run, needs) => Object.entries(needs).every(([id, n]) => (run.invent
 export function craftIntoDeck(run, bp) {
   const error = validateBlueprint(bp, run.inventory);
   if (error) return { error };
-  const card = craftCard(bp);
+  const card = craftCard(bp, { corruption: run.corruption });
   if (card.cardMat === 'paper' && hasRelic(run, 'thimble')) { card.durability += 2; card.maxDurability += 2; }
+  if (bp.inkMat === 'blood') run.corruption += CORRUPTION.craftBlood;
   for (const id of blueprintIngredients(bp)) removeItem(run, id);
   run.deck.push(card);
   const discovered = card.recipeId && !run.grimoire.has(card.recipeId);
@@ -128,6 +152,7 @@ export function refine(run, recipeId) {
   if (error) return { error };
   for (const [id, n] of Object.entries(recipe.from)) removeItem(run, id, n);
   if (recipe.hpCost) run.hp -= recipe.hpCost;
+  if (recipe.id === 'bleed') run.corruption += CORRUPTION.bleed;
   for (const [id, n] of Object.entries(recipe.to)) addItem(run, id, n);
   return { made: recipe.to };
 }
@@ -140,12 +165,16 @@ export function reinscribe(run, cardUid, enchant) {
   if (card.enchants.includes(enchant)) return { error: 'That card already carries it.' };
   if (card.enchants.length >= CARD_MATERIALS[card.cardMat].slots) return { error: 'No room for another enchantment.' };
   if (!run.inventory[`ench_${enchant}`]) return { error: 'You have none of that.' };
-  const bp = { colors: card.colors, inkMat: card.inkMat, cardMat: card.cardMat, enchants: [...card.enchants, enchant] };
-  const fresh = craftCard(bp);
+  const bp = { colors: card.colors, inkMat: card.inkMat, cardMat: card.cardMat, enchants: [...card.enchants, enchant], pristine: card.pristine };
+  const fresh = craftCard(bp, { corruption: run.corruption });
+  applyWear(fresh, 0, card.wear || 0); // a well-worn card keeps its wear
   removeItem(run, `ench_${enchant}`);
   const discovered = fresh.recipeId && !run.grimoire.has(fresh.recipeId);
   if (fresh.recipeId) run.grimoire.add(fresh.recipeId);
-  Object.assign(card, { ...fresh, uid: card.uid, durability: Math.min(card.durability, fresh.maxDurability) });
+  Object.assign(card, {
+    ...fresh, uid: card.uid, casts: card.casts || 0, wear: card.wear || 0,
+    durability: Math.min(card.durability, fresh.maxDurability),
+  });
   return { card, discovered };
 }
 
@@ -165,6 +194,7 @@ export function rest(run, desk) {
   const heal = Math.round(run.maxHp * BENCH_REST_HEAL);
   run.hp = Math.min(run.maxHp, run.hp + heal);
   run.dread = Math.max(0, run.dread - 30);
+  run.corruption = Math.max(0, run.corruption - CORRUPTION.restCleanse);
   desk.rested = true;
   return { heal };
 }
@@ -198,9 +228,12 @@ export function rollRewards(enemyKeys, { elite = false, boss = false, dice = fal
 
 export function scavenge(run, node) {
   const id = `raw_${node.raw}`;
-  addItem(run, id, node.amount);
+  const amount = node.pristine ? node.amount * 2 : node.amount;
+  addItem(run, id, amount);
+  const items = Array(amount).fill(id);
+  if (node.pristine) { addItem(run, 'ess_pristine'); items.push('ess_pristine'); }
   node.gone = true;
-  return { items: Array(node.amount).fill(id) };
+  return { items, pristine: !!node.pristine };
 }
 
 const CHEST_LOOT = ['raw_silver', 'raw_slate', 'raw_gold', 'raw_heart', 'ench_echo', 'ench_swift', 'ench_leech', 'ench_volatile', 'ench_hungering'];
@@ -262,6 +295,9 @@ export function deserializeRun(text) {
   if (v !== 1) throw new Error('Unknown save version');
   run.grimoire = new Set(run.grimoire);
   run.relics ||= [];
+  run.corruption ||= 0;   // saves from before Corruption existed
+  run.perks ||= [];
+  run.variant ||= 'inkbinder';
   run.deck = run.deck.map(k => ({ ...k, durability: unfin(k.durability), maxDurability: unfin(k.maxDurability) }));
   run.world.tiles = Uint8Array.from(run.world.tiles);
   run.world.seen = Uint8Array.from(run.world.seen, ch => +ch);

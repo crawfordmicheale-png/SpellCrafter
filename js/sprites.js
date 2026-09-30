@@ -867,6 +867,10 @@ export const SWAPS = {
   moss: { R: 'E', e: 'e', n: 'e' },
   kelp: { E: 'T', e: 't', R: 'U', n: 't' },
   gold: { s: 'a', S: 'A' },
+  // Inkbinder variants recolor the player's cloak.
+  blood: { c: 'r', C: 'R' },
+  ash: { c: 'g', C: 'G' },
+  gilt: { c: 'n', C: 'a' },
 };
 
 // Which sprite (and swap) each raw material's scavenge spot uses.

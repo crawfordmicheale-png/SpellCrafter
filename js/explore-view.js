@@ -8,7 +8,7 @@ const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matche
 
 export function objectName(obj) {
   switch (obj.type) {
-    case 'node': return RAW_MATERIALS[obj.raw].node;
+    case 'node': return `${obj.pristine ? 'Glinting ' : ''}${RAW_MATERIALS[obj.raw].node}${obj.pristine ? ' (pristine)' : ''}`;
     case 'chest': return 'Reliquary box';
     case 'desk': return 'Writing desk';
     case 'merchant': return 'The Rag Merchant';
@@ -35,7 +35,7 @@ function objectSprite(o) {
 }
 
 // Draws the world around the player on a canvas.
-export function createExploreView(canvas, world, { onTile, onHover }) {
+export function createExploreView(canvas, world, { onTile, onHover, playerSwap }) {
   const ctx = canvas.getContext('2d');
   const tiles = REGIONS[world.regionIdx].tiles;
   let cols = 17, rows = 11, camX = 0, camY = 0, raf = 0, alive = true;
@@ -134,6 +134,14 @@ export function createExploreView(canvas, world, { onTile, onHover }) {
       if (o.type === 'event') glow(sx + TILE / 2, sy + TILE / 2, TILE * (0.8 + flicker * 0.05), '#8e5fb055');
       if (o.type === 'up') glow(sx + TILE / 2, sy + TILE * 0.1, TILE * 0.9, '#fff1b833');
       const [name, swap] = objectSprite(o);
+      if (o.pristine && !reduceMotion()) {
+        // A pristine spot glints: a small four-point star that pulses.
+        const phase = (Math.sin(t / 260 + o.id) + 1) / 2;
+        const px = TILE / PX, cx = sx + TILE * 0.72, cy = sy + TILE * 0.22;
+        ctx.fillStyle = `rgba(220, 240, 255, ${0.35 + phase * 0.65})`;
+        ctx.fillRect(cx - px * 2, cy, px * 5, px);
+        ctx.fillRect(cx, cy - px * 2, px, px * 5);
+      }
       const lift = (o.type === 'elite' || o.type === 'boss' || o.type === 'event') ? bobbing : 0;
       blit(sprite(name, { swap }), sx, sy + lift);
     }
@@ -142,7 +150,7 @@ export function createExploreView(canvas, world, { onTile, onHover }) {
     const bob = moving && Math.floor(walkT / (STEP_MS / 2)) % 2 ? -scale : 0;
     const ppx = Math.round((rx * TILE - camPX) / scale) * scale;
     const ppy = Math.round((ry * TILE - camPY) / scale) * scale;
-    blit(sprite('player'), ppx, ppy + bob, world.facing < 0);
+    blit(sprite('player', { swap: playerSwap }), ppx, ppy + bob, world.facing < 0);
 
     // Lantern light in stepped bands, centred on where the lantern is drawn.
     const r = world.radius;

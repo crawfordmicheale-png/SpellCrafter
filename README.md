@@ -25,7 +25,9 @@ Opening `index.html` straight from disk won't work, because browsers block JavaS
 - **Writing desks:** refine raw materials, craft cards with a live preview, add monster parts to existing cards, mend worn cards, salvage, and rest.
 - **Monster parts are enchantments** (Moth Wing = Swift, Hound Fang = Leech, and so on).
 - **Durability:** paper and wood cards wear out across the run. Stone, silver and gold are permanent.
-- **Eleven hidden recipes**, recorded in a Grimoire that is saved in your browser and carries over between runs.
+- **Thirteen hidden recipes** (two of them forbidden), recorded in a Grimoire that is saved in your browser and carries over between runs.
+- **Four Inkbinders** to unlock: the Inkbinder, Bloodscribe, Ash Monk and Gilded Heretic.
+- **Deeper crafting:** rare inks (Ichor, Ghostlight), glinting pristine finds, cards that become Well-Worn and Heirlooms, and Corruption, which unlocks forbidden recipes.
 - **Ink reactions:** cast inscribed cards of different inks back to back to set off Storm, Brand, Hexfire and seven more.
 - **Relics:** ten passive trinkets from elites, reliquaries and the merchant.
 - **Autosave:** close the tab and pick up where you left off from the title screen.

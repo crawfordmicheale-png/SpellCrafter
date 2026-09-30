@@ -232,6 +232,30 @@ This makes the order you cast in matter, and rewards crafting cards in inks that
 
 ---
 
+## 6.6 Deeper Crafting
+
+**Rare inks.** Refined from what elites and wraiths leave behind.
+
+| Ink | Source | Effect |
+|---|---|---|
+| Ichor | Elites (Warden, Scrivener, Saint) | ×1.75 power; +1 Corruption every cast |
+| Ghostlight | Choir Wraiths, Drowned Scribes | ×1 power; the card costs 1 less |
+
+**Pristine finds.** 12% of scavenge spots glint. They give double materials and a **Pristine Essence**. Add the essence in the desk's Catalyst slot to make a Pristine card (×1.3 power).
+
+**Cards grow with use.** Every crafted card counts its casts across the run. At 8 casts it becomes **Well-Worn** (+1 to damage, Block, healing and Poison); at 20 it becomes an **Heirloom** (+2 more). Re-inscribing keeps the wear.
+
+**Corruption.** Builds from crafting with Blood ink (+2), bleeding at the desk (+1), and casting Ichor cards (+1 each). Resting at a desk lifts 2; praying at a Candle Shrine lifts up to 3.
+
+| Level | Effect |
+|---|---|
+| 5+ Tainted | Black-ink and Blood-ink cards get +2 power, but you start every fight Weak |
+| 10+ Forsaken | Forbidden recipes can be written, but enemies start every fight with +1 Strength |
+
+Forbidden recipes: **The Unwriting** (Black + Blood + Stone: deal 30, lose 3 max HP) and **The Hollow Crown** (Black + White + Ichor + Gold card: 12 to ALL, gain 8 Block).
+
+---
+
 ## 7. Combat Basics
 
 - 3 mana per turn, draw 5 cards per turn.
@@ -299,7 +323,14 @@ All sound is synthesized in the browser (Web Audio), so there are no audio files
 
 - **The Grimoire persists.** Every recipe you discover, by crafting it or from the Trapped Scribe, is saved in the browser and known in every later run. The title screen opens the Grimoire and shows lifetime stats (runs, victories, deepest floor). "Forget everything" wipes it after a second tap.
 - **Runs autosave** to the browser. The title screen offers Continue (showing the floor and HP). Closing the tab mid-fight restarts that fight from its beginning; an unresolved event or relic choice is waiting when you return. Starting a new run over a saved one needs a second tap.
-- Planned: unlockable Inkbinder variants (Bloodscribe, Ash Monk, Gilded Heretic) and milestone unlocks.
+- **Inkbinders.** Chosen on the title screen; unlocked by lifetime progress. Each has its own cloak color.
+
+| Inkbinder | Starts with | Unlock |
+|---|---|---|
+| The Inkbinder | The standard kit | Always |
+| The Bloodscribe | 70 max HP, 2 Blood Ink, the Cracked Inkwell, 2 Corruption | Reach the Drowned Archive |
+| The Ash Monk | +3 Charcoal Ink, +2 Wood Cards, +2 Ash; 4 Block at the start of every fight; only 10 gold | Know 3 spells in the Grimoire |
+| The Gilded Heretic | 120 gold, a Gold Card and Gold Ink; a 70-oil lantern | Reach the Catacombs |
 - No permanent stat boosts, so each run stays fair.
 
 ---
@@ -309,7 +340,7 @@ All sound is synthesized in the browser (Web Audio), so there are no audio files
 1. **Engine:** stay on web, or move to Godot once the systems feel right?
 2. **Deck size limits:** Should there be a maximum deck size to stop players crafting endlessly?
 3. **Fleeing:** Should you be able to run from a random encounter, at a cost (drop materials, lose HP, gain Dread)?
-4. **Ingredient quality:** Should scavenged materials come in grades (crude / fine / pristine) that change their multiplier?
+4. ~~Ingredient quality~~ (done as Pristine finds and essence).
 
 Decided: random encounters stay as they are (driven by Dread). Lantern oil is in (see 4.4).
 
@@ -324,4 +355,5 @@ Decided: random encounters stay as they are (driven by Dread). Lantern oil is in
 5. ~~Pixel art pass and lantern oil~~ (done)
 6. ~~Persistent Grimoire~~, ~~a fourth floor, new creatures, enchantments, recipes and events~~, ~~animation and sound~~ (done)
 7. ~~Ink reactions, relics, save and continue~~ (done)
-8. Unlockable Inkbinder variants, milestone unlocks, more events, polish.
+8. ~~Unlockable Inkbinders, rare inks, pristine finds, card wear, Corruption and forbidden recipes~~ (done)
+9. More events and bosses, polish.

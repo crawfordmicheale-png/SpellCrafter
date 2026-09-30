@@ -454,3 +454,26 @@ button.danger { color: #e7837b; border-color: #5a2320; margin-right: auto; }
 }
 .reaction-banner .inkpip { width: 36px; height: 36px; }
 @media (prefers-reduced-motion: reduce) { .reaction-banner { animation: none; transform: translate(-50%, -50%); } }
+
+/* ---------- inkbinders ---------- */
+.variants { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.variant { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; row-gap: 2px; text-align: left; align-items: center; padding: 10px 12px; }
+.variant .portrait.varart { width: 48px; height: 48px; grid-row: span 2; }
+.variant b { font-family: var(--f-label); color: var(--rare); }
+.variant span { color: var(--muted); font-size: .84rem; line-height: 1.3; }
+.variant.sel { border-color: var(--brass); background: #2b2314; box-shadow: 0 0 14px #c89e5533; }
+.variant.locked { opacity: .55; }
+.variant.locked .portrait { filter: brightness(0) drop-shadow(0 0 1px #6b5a74); }
+.variant:disabled { cursor: default; }
+
+/* ---------- deeper crafting ---------- */
+.card .tag.worn { color: var(--brass); border-color: var(--brass); }
+.card .tag.corrupt { color: #b7c95a; border-color: #7a8a2a; }
+.card.pristine { box-shadow: 0 6px 16px #0008, 0 0 0 2px #bfe8ff, 0 0 16px #9fd8e066; }
+.card.pristine.reacts { box-shadow: 0 6px 16px #0008, 0 0 0 2px #c3a2de, 0 0 18px #8e5fb088, 0 0 0 4px #bfe8ff; }
+.stat.corruption b { color: #b7c95a; }
+.warnline.corrupt { color: #b7c95a; }
+.fx-float.worn { color: var(--rare); font-size: 1.2rem; white-space: nowrap; }
+.codexlist > li.forbidden { border-color: #4a5320; background: linear-gradient(#22241a, var(--panel)); }
+.codexlist > li.forbidden > div b { color: #b7c95a; }
+.ing.k-catalyst span { color: #bfe8ff; }

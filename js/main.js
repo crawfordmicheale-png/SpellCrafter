@@ -1,17 +1,17 @@
 import {
   INK_COLORS, INK_MATERIALS, CARD_MATERIALS, ENCHANTMENTS, INGREDIENTS, RECIPES, ENEMIES, REPAIR_PRICE,
-  REGIONS, REFINING, RAW_MATERIALS, LANTERN, EVENTS, RELICS, REACTIONS,
+  REGIONS, REFINING, RAW_MATERIALS, LANTERN, EVENTS, RELICS, REACTIONS, VARIANTS, CORRUPTION, PRISTINE,
 } from './data.js';
 import { resolveEvent } from './events.js';
-import { loadMeta, learn, recordRun, forget, loadSoundPref, saveSoundPref, saveRunText, loadRunText, clearRun } from './meta.js';
+import { loadMeta, saveMeta, learn, recordRun, forget, loadSoundPref, saveSoundPref, saveRunText, loadRunText, clearRun } from './meta.js';
 import { unlock, sfx, setEnabled, isEnabled, startAmbient, stopAmbient } from './audio.js';
 import { spriteURL, glyphURL } from './sprites.js';
-import { craftCard, validateBlueprint, describeCard, cardComponents } from './crafting.js';
+import { craftCard, validateBlueprint, describeCard, cardComponents, wearName } from './crafting.js';
 import { createCombat, playCard, endTurn, canPlay, effectiveCost, currentMove, previewReaction } from './combat.js';
 import {
   createRun, currentRegion, descend, craftIntoDeck, salvageCard, rollRewards, applyRewards, rollShop,
   refine, canRefine, reinscribe, mend, rest, scavenge, openChest, burnCard, burnValue, resurface,
-  gainRelic, relicChoices, hasRelic, serializeRun, deserializeRun,
+  gainRelic, relicChoices, hasRelic, serializeRun, deserializeRun, isUnlocked, oilMax, corruptionState,
 } from './run.js';
 import { step, findPath, objectAt, BLOCKING } from './world.js';
 import { createExploreView, objectName } from './explore-view.js';
@@ -42,10 +42,11 @@ let lastScreen = null;
 let forgetArmed = false;
 let abandonArmed = false;
 let meta = loadMeta();
+let selectedVariant = VARIANTS[meta.lastVariant] && isUnlocked(meta, meta.lastVariant) ? meta.lastVariant : 'inkbinder';
 setEnabled(loadSoundPref());
 
 const STEP_MS = 85;
-const emptyBlueprint = () => ({ cardMat: null, colors: [], inkMat: null, enchants: [] });
+const emptyBlueprint = () => ({ cardMat: null, colors: [], inkMat: null, enchants: [], pristine: false });
 const itemName = id => INGREDIENTS[id].name;
 const listItems = ids => {
   const counts = {};
@@ -68,7 +69,8 @@ function sigil(colors) {
   return `<span class="sigil${colors.length > 1 ? ' two' : ''}" title="${colors.map(c => INK_COLORS[c].name).join(' + ')}">${imgs}</span>`;
 }
 
-const portrait = (name, cls = '') => `<img class="px portrait ${cls}" src="${spriteURL(name)}" alt="">`;
+const portrait = (name, cls = '', swap) => `<img class="px portrait ${cls}" src="${spriteURL(name, swap ? { swap } : undefined)}" alt="">`;
+const playerSwap = () => VARIANTS[run?.variant || selectedVariant]?.swap;
 const relicIcon = id => `<span class="relic" title="${RELICS[id].name}: ${RELICS[id].desc}">${portrait(`relic_${id}`)}</span>`;
 const relicCard = (id, act = '') => `<button class="reliccard" ${act}>${portrait(`relic_${id}`, 'relicart')}<b>${RELICS[id].name}</b><span>${RELICS[id].desc}</span></button>`;
 const inkPair = key => key.split('+').map(c => `<img class="px inkpip" src="${glyphURL(c)}" alt="${INK_COLORS[c].short}">`).join('');
@@ -76,12 +78,15 @@ const inkPair = key => key.split('+').map(c => `<img class="px inkpip" src="${gl
 function cardHtml(card, { cost = card.cost, disabled = false, action = '', extra = '', cls = '' } = {}) {
   const mat = card.cardMat || 'starter';
   const lines = describeCard(card).map(l => `<li>${l}</li>`).join('');
-  const ench = card.enchants.map(e => `<span class="tag" title="${ENCHANTMENTS[e].desc}">${ENCHANTMENTS[e].name}</span>`).join('');
+  const worn = wearName(card);
+  const ench = card.enchants.map(e => `<span class="tag" title="${ENCHANTMENTS[e].desc}">${ENCHANTMENTS[e].name}</span>`).join('')
+    + (worn ? `<span class="tag worn" title="Cast ${card.casts} times">${worn}</span>` : '')
+    + (card.corrupts ? '<span class="tag corrupt" title="+1 Corruption each cast">Corrupting</span>' : '');
   const inkLabel = card.inkMat ? `${INK_MATERIALS[card.inkMat].name} ink on ${CARD_MATERIALS[card.cardMat].name.toLowerCase()}` : 'Starter';
   const tag = action ? 'button' : 'div';
   // Wordy cards get a compact layout so their text stays on the card.
   const dense = describeCard(card).length + (card.flavor ? 1 : 0) >= 4;
-  return `<${tag} class="card mat-${mat}${card.recipeId ? ' named' : ''}${dense ? ' dense' : ''}${disabled ? ' disabled' : ''}${cls ? ` ${cls}` : ''}" ${action} ${disabled && action ? 'aria-disabled="true"' : ''}>
+  return `<${tag} class="card mat-${mat}${card.recipeId ? ' named' : ''}${dense ? ' dense' : ''}${card.pristine ? ' pristine' : ''}${disabled ? ' disabled' : ''}${cls ? ` ${cls}` : ''}" ${action} ${disabled && action ? 'aria-disabled="true"' : ''}>
     <span class="cost${cost < card.cost ? ' free' : ''}">${cost}</span>
     ${card.hpCost ? `<span class="blood" title="Costs ${card.hpCost} HP">${card.hpCost}</span>` : ''}
     <span class="cname">${card.name}</span>
@@ -139,6 +144,7 @@ function renderBar() {
       <span class="stat gold" title="Gold">Gold <b>${run.gold}</b></span>
       <span class="stat deck" title="Cards in deck">Deck <b>${run.deck.length}</b></span>
       <span class="stat dread" title="Dread rises as you wander. Monsters find you more often.">Dread <b>${run.dread}</b></span>
+      ${run.corruption ? `<span class="stat corruption" title="Corruption ${run.corruption}. Tainted at ${CORRUPTION.tainted}: Black and Blood cards +${CORRUPTION.taintBonus}, but you start fights Weak. Forsaken at ${CORRUPTION.forsaken}: forbidden recipes open, but enemies gain Strength.">Corruption <b>${run.corruption}${corruptionState(run) ? ` · ${corruptionState(run)}` : ''}</b></span>` : ''}
     </span>
     ${run.relics.length ? `<span class="relics">${run.relics.map(relicIcon).join('')}</span>` : ''}
     ${soundButton()}`;
@@ -149,7 +155,7 @@ function renderBar() {
 function renderTitle() {
   app.innerHTML = `
   <section class="title-screen">
-    <div class="title-art" aria-hidden="true">${portrait('player', 'hero')}</div>
+    <div class="title-art" aria-hidden="true">${portrait('player', 'hero', playerSwap())}</div>
     <h1>SpellCrafter</h1>
     <p class="lede">The old gods wrote the world into being. When they died, their pens fell to the rest of us.</p>
     <p>You are an <strong>Inkbinder</strong>. What you write on a card becomes true, for as long as the card holds together.
@@ -162,6 +168,12 @@ function renderTitle() {
       <li><b>Mind your lantern.</b> Oil burns down slowly. Feed it a card, or climb back to the surface to refill it.</li>
       <li><b>Refine and craft</b> at writing desks. Monster parts become enchantments.</li>
     </ul>
+    <h3 class="section-title">Choose your Inkbinder</h3>
+    <div class="variants">${Object.entries(VARIANTS).map(([id, v]) => {
+      const open = isUnlocked(meta, id);
+      return `<button class="variant${id === selectedVariant ? ' sel' : ''}${open ? '' : ' locked'}" data-act="pickVariant" data-id="${id}" ${open ? '' : 'disabled'} aria-pressed="${id === selectedVariant}">
+        ${portrait('player', 'varart', v.swap)}<b>${v.name}</b><span>${open ? v.desc : `Locked. ${v.unlock.text}.`}</span></button>`;
+    }).join('')}</div>
     <div class="title-actions">
       ${savedSummary() ? `<button class="primary" data-act="continue">Continue: ${savedSummary()}</button>
         <button data-act="begin">${abandonArmed ? 'Tap again to abandon it and start over' : 'New run'}</button>`
@@ -184,8 +196,8 @@ function savedSummary() {
 function renderCodex() {
   const known = new Set(meta.grimoire);
   const rows = RECIPES.map(r => {
-    const card = craftCard({ colors: r.match.colors, inkMat: r.match.inkMat, cardMat: r.match.cardMat, enchants: r.match.enchants || [] });
-    if (!known.has(r.id)) return `<li class="unknown"><div class="card ghost"><span>?</span></div><div><b>Unknown spell</b><p><i>${r.hint}</i></p></div></li>`;
+    const card = craftCard({ colors: r.match.colors, inkMat: r.match.inkMat, cardMat: r.match.cardMat, enchants: r.match.enchants || [] }, { corruption: 99 });
+    if (!known.has(r.id)) return `<li class="unknown${r.forbidden ? ' forbidden' : ''}"><div class="card ghost"><span>?</span></div><div><b>${r.forbidden ? 'Forbidden spell' : 'Unknown spell'}</b><p><i>${r.hint}</i></p>${r.forbidden ? `<p>Only an Inkbinder with ${CORRUPTION.forsaken} Corruption can write it.</p>` : ''}</div></li>`;
     const how = `${r.match.colors.map(c => INK_COLORS[c].name).join(' + ')}, ${INK_MATERIALS[r.match.inkMat].name} ink, ${CARD_MATERIALS[r.match.cardMat].name} card${r.match.enchants ? `, ${r.match.enchants.map(e => ENCHANTMENTS[e].part).join(', ')}` : ''}`;
     return `<li>${cardHtml(card)}<div><b>${r.name}</b><p>${how}</p></div></li>`;
   }).join('');
@@ -221,7 +233,7 @@ function mountExplore() {
     <aside class="side" id="side"></aside>
   </section>`;
   view?.destroy();
-  view = createExploreView(document.getElementById('map'), run.world, { onTile: walkTo, onHover: hover });
+  view = createExploreView(document.getElementById('map'), run.world, { onTile: walkTo, onHover: hover, playerSwap: playerSwap() });
   view.world = run.world;
 }
 
@@ -252,13 +264,13 @@ function renderSide() {
     action = `<div class="prompt"><p>Stairs lead down into <b>${next.name}</b>. You cannot return to this floor.</p>
       <button class="primary" data-act="descend">Descend</button></div>`;
   } else if (standingOn?.type === 'up') {
-    action = run.oil >= LANTERN.max
+    action = run.oil >= oilMax(run)
       ? '<div class="prompt"><p>Daylight, far above. Your lantern is full, so there is no reason to climb.</p></div>'
       : `<div class="prompt"><p>Climb to the surface and refill your lantern. The long way back down will cost you <b>${LANTERN.resurfaceDread} Dread</b>.</p>
         <button class="primary" data-act="resurface">Resurface</button></div>`;
   }
   const dreadPct = Math.min(100, run.dread / 2);
-  const oilPct = (run.oil / LANTERN.max) * 100;
+  const oilPct = (run.oil / oilMax(run)) * 100;
   const lanternNote = run.oil <= 0 ? 'Your lantern is out. Things find you twice as often.'
     : run.oil < 12 ? 'Your lantern is guttering.' : '';
   side.innerHTML = `
@@ -266,11 +278,12 @@ function renderSide() {
     <p class="intro">${region.intro}</p>
     ${action}
     <div class="meters">
-      <div class="meter oil${run.oil < 12 ? ' low' : ''}" title="Lantern oil ${run.oil} of ${LANTERN.max}. Light radius ${run.world.radius}."><span style="width:${oilPct}%"></span><em>Lantern ${run.oil}</em></div>
+      <div class="meter oil${run.oil < 12 ? ' low' : ''}" title="Lantern oil ${run.oil} of ${oilMax(run)}. Light radius ${run.world.radius}."><span style="width:${oilPct}%"></span><em>Lantern ${run.oil}</em></div>
       <button class="burn" data-act="openBurn" title="Burn a paper, wood or starter card for oil">Burn a card</button>
       <div class="meter dread" title="Dread ${run.dread}"><span style="width:${dreadPct}%"></span><em>Dread ${run.dread}</em></div>
     </div>
     ${lanternNote ? `<p class="warnline">${lanternNote}</p>` : ''}
+    ${corruptionState(run) ? `<p class="warnline corrupt">${corruptionState(run) === 'Forsaken' ? 'You are Forsaken. Forbidden recipes answer you, and your enemies grow stronger.' : 'You are Tainted. Black and Blood cards hit harder, but you start every fight Weak.'}</p>` : ''}
     <ol class="elog" aria-live="polite">${exploreLog.slice(-5).map(l => `<li>${l}</li>`).join('')}</ol>
     <div class="satchel-mini">
       <h3 class="panel-title">Raw materials</h3>
@@ -322,7 +335,8 @@ function interact(obj) {
   switch (obj.type) {
     case 'node': {
       const r = scavenge(run, obj);
-      logExplore(`You pick through the ${objectName(obj).toLowerCase()}: ${listItems(r.items)}.`);
+      logExplore(`${r.pristine ? 'Pristine! ' : ''}You pick through the ${objectName(obj).toLowerCase()}: ${listItems(r.items)}.`);
+      if (r.pristine) view?.float(obj.x, obj.y, 'Pristine Essence', '#bfe8ff');
       view?.float(obj.x, obj.y, `+${r.items.length} ${itemName(r.items[0])}`, '#e0b95c');
       sfx('pickup');
       standingOn = null;
@@ -385,6 +399,7 @@ function isSelected(kind, key) {
   if (kind === 'cardMat') return bp.cardMat === key;
   if (kind === 'inkMat') return bp.inkMat === key;
   if (kind === 'color') return bp.colors.includes(key);
+  if (kind === 'catalyst') return !!bp.pristine;
   return bp.enchants.includes(key);
 }
 
@@ -393,7 +408,7 @@ function ingredientCounts() {
   const bp = blueprint;
   const used = [
     bp.cardMat && `mat_${bp.cardMat}`, bp.inkMat && `ink_${bp.inkMat}`,
-    ...bp.colors.map(c => `color_${c}`), ...bp.enchants.map(e => `ench_${e}`),
+    ...bp.colors.map(c => `color_${c}`), ...bp.enchants.map(e => `ench_${e}`), bp.pristine && 'ess_pristine',
   ].filter(Boolean);
   for (const id of used) counts[id]--;
   return counts;
@@ -406,6 +421,7 @@ function inscribeTab() {
     ['color', 'Ink color', INK_COLORS, 'color_'],
     ['inkMat', 'Ink material', INK_MATERIALS, 'ink_'],
     ['enchant', 'Enchantments (monster parts)', ENCHANTMENTS, 'ench_'],
+    ['catalyst', 'Catalyst', { pristine: { desc: `Makes the card Pristine: x${PRISTINE.mult} power.` } }, 'ess_'],
   ];
   const satchel = groups.map(([kind, label, table, prefix]) => {
     const items = Object.keys(table).filter(k => (run.inventory[prefix + k] || 0) > 0).map(k => {
@@ -414,9 +430,11 @@ function inscribeTab() {
       const sel = isSelected(kind, k);
       const swatch = kind === 'color' ? `<span class="swatch" style="--ink:${INK_COLORS[k].hue}"></span>` : '';
       const text = kind === 'enchant' ? `${ENCHANTMENTS[k].part} <small>${ENCHANTMENTS[k].name}</small>` : itemName(id);
+      if (kind === 'catalyst' && !(run.inventory[id] > 0)) return '';
       return `<button class="ing k-${kind} m-${k}${sel ? ' sel' : ''}" data-act="pick" data-kind="${kind}" data-key="${k}" ${left <= 0 && !sel ? 'disabled' : ''} title="${table[k].desc}">
         ${swatch}<span>${text}</span><b>${left}</b></button>`;
     }).join('');
+    if (kind === 'catalyst' && !items) return '';
     return `<div class="group"><h3>${label}</h3><div class="ings">${items || '<em class="none">None. Refine raw materials or find some.</em>'}</div></div>`;
   }).join('');
 
@@ -428,7 +446,7 @@ function inscribeTab() {
   const enchSlots = Array.from({ length: slots }, (_, i) => slot('Enchantment', bp.enchants[i] && ENCHANTMENTS[bp.enchants[i]].name, 'enchant', bp.enchants[i])).join('');
 
   const err = validateBlueprint(bp, run.inventory);
-  const preview = !validateBlueprint(bp) ? cardHtml(craftCard(bp)) : `<div class="card ghost"><span>${err}</span></div>`;
+  const preview = !validateBlueprint(bp) ? cardHtml(craftCard(bp, { corruption: run.corruption })) : `<div class="card ghost"><span>${err}</span></div>`;
 
   const grimoire = RECIPES.map(r => run.grimoire.has(r.id)
     ? `<li class="known"><b>${r.name}</b> ${r.match.colors.map(c => INK_COLORS[c].short).join(' + ')} ink, ${INK_MATERIALS[r.match.inkMat].name}, ${CARD_MATERIALS[r.match.cardMat].name}${r.match.enchants ? `, ${r.match.enchants.map(e => ENCHANTMENTS[e].name).join(', ')}` : ''}</li>`
@@ -443,6 +461,7 @@ function inscribeTab() {
         ${colorSlots}
         ${slot('Ink material', bp.inkMat && INK_MATERIALS[bp.inkMat].name + ' ink', 'inkMat', bp.inkMat)}
         ${enchSlots}
+        ${bp.pristine ? slot('Catalyst', 'Pristine Essence', 'catalyst', 'pristine') : ''}
         ${bp.cardMat && !slots ? '<p class="note">Paper can’t hold enchantments.</p>' : ''}
       </div>
       <div class="panel preview">
@@ -567,7 +586,7 @@ function renderFight() {
     <div class="enemies">${enemies}</div>
     <div class="table">
       <div class="panel player">
-        <span class="pname">${portrait('player', 'me')}The Inkbinder</span>
+        <span class="pname">${portrait('player', 'me', playerSwap())}${VARIANTS[run.variant]?.name || 'The Inkbinder'}</span>
         ${bars(run.hp, run.maxHp, 'you')}
         <span class="chips">${statusChips(c.player)}${c.player.nextFree ? '<span class="chip free">Next card free</span>' : ''}${lastInk}</span>
         ${run.relics.length ? `<span class="relics">${run.relics.map(relicIcon).join('')}</span>` : ''}
@@ -628,7 +647,7 @@ function renderShop() {
 function renderBurn() {
   const cards = run.deck.map(k => {
     const v = burnValue(k);
-    const why = !v ? `${CARD_MATERIALS[k.cardMat].name} will not burn` : run.oil >= LANTERN.max ? 'Your lantern is full' : run.deck.length <= LANTERN.minDeck ? 'You cannot spare another card' : '';
+    const why = !v ? `${CARD_MATERIALS[k.cardMat].name} will not burn` : run.oil >= oilMax(run) ? 'Your lantern is full' : run.deck.length <= LANTERN.minDeck ? 'You cannot spare another card' : '';
     return cardHtml(k, {
       action: `data-act="burn" data-uid="${k.uid}" title="${why || `Burn for ${v} oil`}"`, disabled: !!why,
       extra: `<span class="salv">${v ? `+${v} oil` : 'Will not burn'}</span>`,
@@ -638,7 +657,7 @@ function renderBurn() {
   <section class="burnscreen">
     <header class="screen-head">
       <h2>Feed the Lantern</h2>
-      <p>Paper and wood burn, and so do the starter cards. Stone and metal will not. Lantern oil: <b>${run.oil} / ${LANTERN.max}</b>.</p>
+      <p>Paper and wood burn, and so do the starter cards. Stone and metal will not. Lantern oil: <b>${run.oil} / ${oilMax(run)}</b>.</p>
     </header>
     ${notice ? `<p class="notice ${notice.tone || ''}" role="status">${notice.text}</p>` : ''}
     <div class="panel"><div class="cards">${cards}</div></div>
@@ -756,7 +775,9 @@ const actions = {
     if (loadRunText() && !abandonArmed) { abandonArmed = true; return; }
     abandonArmed = false;
     clearRun();
-    run = createRun(undefined, meta.grimoire);
+    run = createRun(undefined, meta.grimoire, selectedVariant);
+    meta.lastVariant = selectedVariant;
+    saveMeta(meta);
     run.startKnown = meta.grimoire.length;
     startAmbient(0);
     sfx('descend');
@@ -796,6 +817,7 @@ const actions = {
     logExplore(`You take the ${RELICS[id].name}.`);
   },
   codex() { forgetArmed = false; screen = 'codex'; },
+  pickVariant({ id }) { if (isUnlocked(meta, id)) { selectedVariant = id; sfx('click'); } },
   forget() {
     if (!forgetArmed) { forgetArmed = true; return; }
     meta = forget();
@@ -856,6 +878,7 @@ const actions = {
   pick({ kind, key }) {
     const bp = blueprint;
     notice = null;
+    if (kind === 'catalyst') { bp.pristine = !bp.pristine; return; }
     if (kind === 'cardMat') {
       bp.cardMat = bp.cardMat === key ? null : key;
       bp.enchants = bp.enchants.slice(0, bp.cardMat ? CARD_MATERIALS[bp.cardMat].slots : 0);
@@ -936,6 +959,7 @@ function snapshot() {
     enemies: combat.enemies.map(e => ({ hp: e.hp })),
     hp: run.hp, block: combat.player.block,
     reactions: combat.lastReaction?.n,
+    worn: combat.wornUp?.n,
   };
 }
 
@@ -991,6 +1015,10 @@ function combatFx(before) {
     floatAt(playerEl, `+${combat.player.block - before.block} Block`, 'blk');
   }
   if (killed) sfx('kill'); else if (hit) sfx('hit');
+  if (combat.wornUp && combat.wornUp.n !== before.worn) {
+    floatAt(app.querySelector('.player'), `${combat.wornUp.name}: ${combat.wornUp.tier}`, 'worn');
+    sfx('craft');
+  }
   const rx = combat.lastReaction;
   if (rx && rx.n !== before.reactions) {
     sfx('react');
