@@ -136,11 +136,27 @@ Raw materials must be refined before they can be crafted. Some refining is a rea
 - Resting at a desk calms Dread by 30. Descending halves it.
 - Monsters drop their monster part and themed raws.
 
-### 4.4 Merchant
+### 4.4 Lantern oil
+Your lantern is your light radius, and it runs on oil.
+
+| Oil | Light radius |
+|---|---|
+| 60–100 | 5 tiles |
+| 30–59 | 4 |
+| 12–29 | 3 |
+| 1–11 | 2 |
+| 0 | 1, and random encounters are twice as likely |
+
+- Oil drains very slowly: 1 point every 5 steps, so a full lantern lasts about 500 steps (roughly 2–3 floors).
+- **Burn a card** (anytime while exploring): starter cards give 8 oil, paper 15, wood 30. Stone, silver and gold will not burn. You can't burn below 5 cards.
+- **Resurface** from the up-stairs where you arrived on each floor: a full refill, but the climb back down costs 30 Dread. You return to the same floor.
+- This makes cheap cards double as fuel, and it gives every card a second use once it has served its purpose.
+
+### 4.5 Merchant
 - Sells raws, refined ingredients and monster parts. Prices are set by rarity.
 - **Repair** a worn card for gold.
 
-### 4.5 Salvage and breakage
+### 4.6 Salvage and breakage
 - At a desk, dismantle one card per visit to recover one random component.
 - Cards that break from wear have a 50% chance to leave a component behind.
 
@@ -203,7 +219,17 @@ Some exact combinations make **named spells** with unique effects beyond the for
 
 ---
 
-## 9. Meta-Progression
+## 9. Art Direction
+
+- **Hand-drawn 16×16 pixel art** for the Inkbinder, tiles, scavenge spots, props, enemies and elites. Map tiles are drawn at 3× on desktop and 2× on phones, always at whole-number scales so pixels stay crisp.
+- Tiles are drawn once with numbered colors; each floor maps them to its own palette (chapel violet, archive teal, library umber).
+- Enemy sprites double as fight portraits at 6×. Cards carry pixel ink glyphs: flame (red), ward (white), eye (blue), leaf (green), skull (black).
+- Card frames show their material: paper, wood grain, speckled stone, silver and gold sheen.
+- Lighting is drawn in stepped bands around the lantern, with a slight flicker.
+
+---
+
+## 10. Meta-Progression
 
 - Grimoire (discovered recipes) persists.
 - Unlock new ingredients into the loot pool (e.g., new ink colors, new enchantments) by reaching milestones.
@@ -211,23 +237,24 @@ Some exact combinations make **named spells** with unique effects beyond the for
 
 ---
 
-## 10. Open Questions
+## 11. Open Questions
 
 1. **Engine:** stay on web, or move to Godot once the systems feel right?
 2. **Deck size limits:** Should there be a maximum deck size to stop players crafting endlessly?
-3. **Visible vs. random enemies:** Keep random encounters driven by Dread, or show wandering monsters on the map that you can sneak past?
-4. **Fleeing:** Should you be able to run from a random encounter, at a cost (drop materials, lose HP, gain Dread)?
-5. **Ingredient quality:** Should scavenged materials come in grades (crude / fine / pristine) that change their multiplier?
-6. **Light as a resource:** Should lantern oil run down as you explore, shrinking your light radius?
+3. **Fleeing:** Should you be able to run from a random encounter, at a cost (drop materials, lose HP, gain Dread)?
+4. **Ingredient quality:** Should scavenged materials come in grades (crude / fine / pristine) that change their multiplier?
+
+Decided: random encounters stay as they are (driven by Dread). Lantern oil is in (see 4.4).
 
 ---
 
-## 11. Build Order
+## 12. Build Order
 
 1. ~~Data model and card formula~~ (done)
 2. ~~Combat prototype~~ (done)
 3. ~~Crafting bench with live preview~~ (done)
 4. ~~Exploration floors, scavenging, refining, monster parts, re-inscribe and mend~~ (done)
-5. Persistent Grimoire and unlocks across runs.
-6. More floors, enemies, recipes and events. Balance pass.
-7. Art, sound, polish.
+5. ~~Pixel art pass and lantern oil~~ (done)
+6. Persistent Grimoire and unlocks across runs.
+7. More floors, enemies, recipes and events. Balance pass.
+8. Animation, sound, polish.

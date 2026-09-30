@@ -1,8 +1,13 @@
-import { REGIONS, RAW_MATERIALS, ENCOUNTER } from './data.js';
+import { REGIONS, RAW_MATERIALS, ENCOUNTER, LANTERN } from './data.js';
 
 export const WALL = 0, FLOOR = 1;
 export const MAP_W = 46, MAP_H = 32;
 export const LIGHT_RADIUS = 5;
+
+export function lightRadius(oil) {
+  for (const [min, r] of LANTERN.radii) if (oil >= min) return r;
+  return 1;
+}
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -61,6 +66,9 @@ export function generateRegion(regionIdx, seed) {
     objects: [],
     px: rooms[0].cx, py: rooms[0].cy,
     stepsSinceFight: 0,
+    radius: LIGHT_RADIUS,
+    facing: 1,
+    oilSteps: 0,
   };
 
   // Farthest room from the start holds the way down (or the boss).
@@ -84,6 +92,8 @@ export function generateRegion(regionIdx, seed) {
     return null;
   };
 
+  // The way back up to the surface is where you arrive.
+  world.objects.push({ id: nextId++, type: 'up', x: world.px, y: world.py });
   if (region.boss) place('boss', exitRoom.cx, exitRoom.cy, { enemy: region.boss });
   else place('exit', exitRoom.cx, exitRoom.cy);
 
@@ -167,7 +177,7 @@ export function findPath(world, tx, ty) {
 }
 
 export function reveal(world) {
-  const r = LIGHT_RADIUS;
+  const r = world.radius;
   for (let y = world.py - r; y <= world.py + r; y++) {
     for (let x = world.px - r; x <= world.px + r; x++) {
       if (x < 0 || y < 0 || x >= world.w || y >= world.h) continue;
@@ -176,7 +186,7 @@ export function reveal(world) {
   }
 }
 
-export const isLit = (world, x, y) => (x - world.px) ** 2 + (y - world.py) ** 2 <= LIGHT_RADIUS ** 2 + 1;
+export const isLit = (world, x, y) => (x - world.px) ** 2 + (y - world.py) ** 2 <= world.radius ** 2 + 1;
 
 // Moves the player one tile. Returns what happened:
 //   { blocked } | { object } | { encounter: [enemyKeys] } | {}
@@ -187,19 +197,30 @@ export function step(world, run, dx, dy, rng = Math.random) {
   // People and monsters stay put; you stop next to them and interact.
   if (obj && BLOCKING.has(obj.type)) return { object: obj };
   world.px = nx; world.py = ny;
+  if (dx) world.facing = Math.sign(dx);
+  burnOil(world, run);
   reveal(world);
   if (obj) return { object: obj };
 
   run.dread += ENCOUNTER.dreadPerStep;
   world.stepsSinceFight++;
   if (world.stepsSinceFight < ENCOUNTER.graceSteps) return {};
-  const chance = Math.min(ENCOUNTER.max, ENCOUNTER.base + run.dread * ENCOUNTER.perDread);
+  let chance = Math.min(ENCOUNTER.max, ENCOUNTER.base + run.dread * ENCOUNTER.perDread);
+  if (run.oil <= 0) chance *= LANTERN.darkEncounterMult;
   if (rng() < chance) {
     world.stepsSinceFight = 0;
     const pool = REGIONS[world.regionIdx].encounters;
     return { encounter: pool[Math.floor(rng() * pool.length)] };
   }
   return {};
+}
+
+function burnOil(world, run) {
+  if (++world.oilSteps >= LANTERN.stepsPerOil) {
+    world.oilSteps = 0;
+    run.oil = Math.max(0, run.oil - 1);
+  }
+  world.radius = lightRadius(run.oil);
 }
 
 export function nodeLabel(obj) {

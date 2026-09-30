@@ -1,9 +1,9 @@
 import {
   ENEMIES, INGREDIENTS, PRICES, REGIONS, STARTER_DECK, STARTING_INVENTORY, PLAYER_START, REFINING,
-  CARD_MATERIALS, BENCH_REST_HEAL, RAW_MATERIALS, DESCEND_HEAL,
+  CARD_MATERIALS, BENCH_REST_HEAL, RAW_MATERIALS, DESCEND_HEAL, LANTERN,
 } from './data.js';
 import { makeStarterCard, craftCard, validateBlueprint, blueprintIngredients, salvageRoll } from './crafting.js';
-import { generateRegion } from './world.js';
+import { generateRegion, lightRadius, reveal } from './world.js';
 
 export function createRun(seed = Math.floor(Math.random() * 2 ** 31)) {
   const run = {
@@ -13,19 +13,57 @@ export function createRun(seed = Math.floor(Math.random() * 2 ** 31)) {
     inventory: { ...STARTING_INVENTORY },
     grimoire: new Set(), // recipe ids discovered this run
     dread: 0,
+    oil: LANTERN.max,
     regionIdx: 0,
     world: null,
     salvagedHere: false,
   };
-  run.world = generateRegion(0, seed);
+  enterWorld(run, generateRegion(0, seed));
   return run;
+}
+
+function enterWorld(run, world) {
+  run.world = world;
+  world.radius = lightRadius(run.oil);
+  reveal(world);
+}
+
+export function burnValue(card) {
+  if (!card.crafted) return LANTERN.burn.starter;
+  return LANTERN.burn[card.cardMat] || 0; // stone and metal will not burn
+}
+
+// Feed a card to the lantern. Returns { oil } or { error }.
+export function burnCard(run, cardUid) {
+  const card = run.deck.find(k => k.uid === cardUid);
+  if (!card) return { error: 'That card is not in your deck.' };
+  const value = burnValue(card);
+  if (!value) return { error: `${CARD_MATERIALS[card.cardMat].name} will not burn.` };
+  if (run.oil >= LANTERN.max) return { error: 'Your lantern is already full.' };
+  if (run.deck.length <= LANTERN.minDeck) return { error: 'You cannot spare another card.' };
+  run.deck = run.deck.filter(k => k.uid !== cardUid);
+  const before = run.oil;
+  run.oil = Math.min(LANTERN.max, run.oil + value);
+  run.world.radius = lightRadius(run.oil);
+  reveal(run.world);
+  return { oil: run.oil - before, card };
+}
+
+// Climb back to the surface to refill the lantern. You return to the same spot.
+export function resurface(run) {
+  if (run.oil >= LANTERN.max) return { error: 'Your lantern is already full.' };
+  run.oil = LANTERN.max;
+  run.dread += LANTERN.resurfaceDread;
+  run.world.radius = lightRadius(run.oil);
+  reveal(run.world);
+  return { dread: LANTERN.resurfaceDread };
 }
 
 export const currentRegion = run => REGIONS[run.regionIdx];
 
 export function descend(run) {
   run.regionIdx++;
-  run.world = generateRegion(run.regionIdx, run.seed + run.regionIdx * 7919);
+  enterWorld(run, generateRegion(run.regionIdx, run.seed + run.regionIdx * 7919));
   run.dread = Math.floor(run.dread / 2);
   const heal = Math.round(run.maxHp * DESCEND_HEAL);
   run.hp = Math.min(run.maxHp, run.hp + heal);

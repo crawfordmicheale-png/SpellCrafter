@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { craftCard, validateBlueprint, findRecipe } from '../js/crafting.js';
 import { createCombat, playCard, endTurn } from '../js/combat.js';
-import { createRun, craftIntoDeck, salvageCard, refine, reinscribe, mend, descend } from '../js/run.js';
-import { generateRegion, findPath, step, isFloor, objectAt } from '../js/world.js';
+import { createRun, craftIntoDeck, salvageCard, refine, reinscribe, mend, descend, burnCard, resurface } from '../js/run.js';
+import { generateRegion, findPath, step, isFloor, objectAt, lightRadius } from '../js/world.js';
 import { RECIPES, REGIONS } from '../js/data.js';
 
 const seq = (...vals) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -162,4 +162,53 @@ test('walking builds dread and eventually meets something', () => {
   assert.ok(run.dread > 0);
   descend(run);
   assert.equal(run.regionIdx, 1);
+});
+
+test('sprites are well-formed', async () => {
+  const { SPRITES, PALETTE, GLYPHS, NODE_SPRITES, SWAPS } = await import('../js/sprites.js');
+  for (const [name, rows] of Object.entries(SPRITES)) {
+    assert.equal(rows.length, 16, `${name} height`);
+    rows.forEach((r, i) => {
+      assert.equal(r.length, 16, `${name} row ${i} width`);
+      for (const ch of r) assert.ok(ch === '.' || PALETTE[ch] || /[1-9]/.test(ch), `${name} row ${i} char ${ch}`);
+    });
+  }
+  for (const [name, rows] of Object.entries(GLYPHS)) rows.forEach(r => assert.equal(r.length, 9, name));
+  for (const [raw, [spr, swap]] of Object.entries(NODE_SPRITES)) {
+    assert.ok(SPRITES[spr], raw);
+    if (swap) assert.ok(SWAPS[swap], raw);
+  }
+});
+
+test('lantern oil drains slowly and shrinks the light', () => {
+  const run = createRun(5);
+  const w = run.world;
+  assert.equal(w.radius, 5);
+  let steps = 0;
+  for (let i = 0; i < 2000 && run.oil > 50; i++) {
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => isFloor(w, w.px + dx, w.py + dy) && !objectAt(w, w.px + dx, w.py + dy));
+    const [dx, dy] = dirs[i % dirs.length];
+    if (!step(w, run, dx, dy, () => 0.99).blocked) steps++;
+  }
+  assert.equal(run.oil, 50);
+  assert.ok(steps >= 250, `${steps} steps for 50 oil`);
+  assert.equal(w.radius, 4);
+  assert.equal(lightRadius(0), 1);
+});
+
+test('burning cards and resurfacing refuel the lantern', () => {
+  const run = createRun(5);
+  run.oil = 40;
+  const starter = run.deck[0];
+  assert.equal(burnCard(run, starter.uid).oil, 8);
+  assert.equal(run.oil, 48);
+  run.inventory.mat_stone = 1;
+  const { card: stone } = craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'stone' });
+  assert.match(burnCard(run, stone.uid).error, /will not burn/);
+  const dread = run.dread;
+  assert.equal(resurface(run).dread, 30);
+  assert.equal(run.oil, 100);
+  assert.equal(run.dread, dread + 30);
+  assert.ok(resurface(run).error);
+  assert.ok(run.world.objects.some(o => o.type === 'up' && o.x === run.world.px && o.y === run.world.py));
 });

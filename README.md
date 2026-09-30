@@ -20,6 +20,8 @@ Opening `index.html` straight from disk won't work, because browsers block JavaS
 - **Three dungeon floors** that are generated fresh each run: the Chapel Ruins, the Drowned Archive, and the Last Library where the boss waits. Explore by tapping a tile or with WASD or the arrow keys.
 - **Scavenging:** raw materials from the environment, reliquary boxes, and a guardian elite on each floor.
 - **Dread:** the longer you wander, the more often monsters find you.
+- **Lantern oil:** your light shrinks as oil runs low. Burn a card for oil, or climb back to the surface to refill.
+- **Hand-drawn pixel art** for the Inkbinder, dungeon tiles, scavenge spots, enemies, and the ink glyphs on cards.
 - **Writing desks:** refine raw materials, craft cards with a live preview, add monster parts to existing cards, mend worn cards, salvage, and rest.
 - **Monster parts are enchantments** (Moth Wing = Swift, Hound Fang = Leech, and so on).
 - **Durability:** paper and wood cards wear out across the run. Stone, silver and gold are permanent.
@@ -35,5 +37,6 @@ Opening `index.html` straight from disk won't work, because browsers block JavaS
 | `js/run.js` | Run state: inventory, refining, re-inscribe, mend, rewards, shop, salvage |
 | `js/world.js` | Dungeon generation, fog of war, pathfinding, random encounters |
 | `js/explore-view.js` | Draws the dungeon on a canvas |
+| `js/sprites.js` | The pixel art: every sprite as rows of palette letters, plus the renderer |
 | `js/main.js` | Screens and input |
 | `tests/` | Rules tests |

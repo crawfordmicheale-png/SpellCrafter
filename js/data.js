@@ -255,7 +255,7 @@ export const REGIONS = [
     nodes: 13, chests: 2,
     encounters: [['acolyte'], ['gravemoth', 'gravemoth'], ['gravemoth'], ['acolyte', 'gravemoth']],
     elite: 'warden', merchant: true, hpMult: 1,
-    palette: { floor: '#2b2430', floor2: '#30283a', wall: '#4a3f50', edge: '#6b5a74' },
+    tiles: { 1: '#2b2430', 2: '#352c3c', 3: '#1d1822', 4: '#4f7a45', 5: '#4a3f50', 6: '#6b5a74', 7: '#2a2230', 8: '#1f1a24', 9: '#231c28' },
   },
   {
     name: 'The Drowned Archive',
@@ -264,7 +264,7 @@ export const REGIONS = [
     nodes: 14, chests: 2,
     encounters: [['drowned'], ['drowned', 'gravemoth'], ['hound'], ['ghoul']],
     elite: 'scrivener', merchant: true, hpMult: 1.15,
-    palette: { floor: '#1f2a30', floor2: '#233239', wall: '#3a4d56', edge: '#557582' },
+    tiles: { 1: '#1f2a30', 2: '#27363d', 3: '#141c21', 4: '#3f7a6f', 5: '#3a4d56', 6: '#557582', 7: '#1f2c33', 8: '#162027', 9: '#18242a' },
   },
   {
     name: 'The Last Library',
@@ -273,10 +273,22 @@ export const REGIONS = [
     nodes: 12, chests: 3,
     encounters: [['hound', 'ghoul'], ['drowned', 'drowned'], ['ghoul', 'gravemoth', 'gravemoth'], ['acolyte', 'hound']],
     elite: null, boss: 'grimoire', merchant: false, hpMult: 1.3,
-    palette: { floor: '#2e2320', floor2: '#352824', wall: '#523a2e', edge: '#7a5840' },
+    tiles: { 1: '#2e2320', 2: '#392b26', 3: '#1e1614', 4: '#8a6a2a', 5: '#523a2e', 6: '#7a5840', 7: '#2e201a', 8: '#221814', 9: '#241915' },
   },
 ];
 
 // Random encounters: chance per step on open floor.
 export const ENCOUNTER = { graceSteps: 12, base: 0.02, perDread: 0.0003, max: 0.09, dreadPerStep: 1 };
 export const DESCEND_HEAL = 0.2; // fraction of max HP restored on the stairs
+
+// Lantern oil drains slowly as you walk. Less oil, less light.
+export const LANTERN = {
+  max: 100,
+  stepsPerOil: 5,
+  // [minimum oil, light radius in tiles], checked in order
+  radii: [[60, 5], [30, 4], [12, 3], [1, 2], [0, 1]],
+  darkEncounterMult: 2,  // encounter chance when the lantern is out
+  burn: { starter: 8, paper: 15, wood: 30 }, // oil gained by burning a card
+  resurfaceDread: 30,    // the climb back down frays your nerves
+  minDeck: 5,
+};
