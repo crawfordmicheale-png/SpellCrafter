@@ -1,12 +1,13 @@
 import {
   INK_COLORS, INK_MATERIALS, CARD_MATERIALS, ENCHANTMENTS, INGREDIENTS, RECIPES, ENEMIES, REPAIR_PRICE,
-  REGIONS, REFINING, RAW_MATERIALS,
+  REGIONS, REFINING, RAW_MATERIALS, LANTERN,
 } from './data.js';
+import { spriteURL, glyphURL } from './sprites.js';
 import { craftCard, validateBlueprint, describeCard, cardComponents } from './crafting.js';
 import { createCombat, playCard, endTurn, canPlay, effectiveCost, currentMove } from './combat.js';
 import {
   createRun, currentRegion, descend, craftIntoDeck, salvageCard, rollRewards, applyRewards, rollShop,
-  refine, canRefine, reinscribe, mend, rest, scavenge, openChest,
+  refine, canRefine, reinscribe, mend, rest, scavenge, openChest, burnCard, burnValue, resurface,
 } from './run.js';
 import { step, findPath, objectAt, BLOCKING } from './world.js';
 import { createExploreView, objectName } from './explore-view.js';
@@ -53,10 +54,11 @@ function durabilityLabel(card) {
 }
 
 function sigil(colors) {
-  const hues = colors.map(c => INK_COLORS[c].hue);
-  const bg = hues.length === 1 ? hues[0] : `conic-gradient(${hues[0]} 0 50%, ${hues[1]} 0 100%)`;
-  return `<span class="sigil" style="--ink:${bg}"></span>`;
+  const imgs = colors.map(c => `<img class="px" src="${glyphURL(c)}" alt="">`).join('');
+  return `<span class="sigil${colors.length > 1 ? ' two' : ''}" title="${colors.map(c => INK_COLORS[c].name).join(' + ')}">${imgs}</span>`;
 }
+
+const portrait = (name, cls = '') => `<img class="px portrait ${cls}" src="${spriteURL(name)}" alt="">`;
 
 function cardHtml(card, { cost = card.cost, disabled = false, action = '', extra = '' } = {}) {
   const mat = card.cardMat || 'starter';
@@ -128,6 +130,7 @@ function renderBar() {
 function renderTitle() {
   app.innerHTML = `
   <section class="title-screen">
+    <div class="title-art" aria-hidden="true">${portrait('player', 'hero')}</div>
     <h1>SpellCrafter</h1>
     <p class="lede">The old gods wrote the world into being. When they died, their pens fell to the rest of us.</p>
     <p>You are an <strong>Inkbinder</strong>. What you write on a card becomes true, for as long as the card holds together.
@@ -137,6 +140,7 @@ function renderTitle() {
     <ul class="howto">
       <li><b>Explore</b> by tapping a tile, or with WASD or the arrow keys. Your lantern only reaches so far.</li>
       <li><b>Scavenge</b> raw materials. The longer you wander, the more Dread builds, and the more often things find you.</li>
+      <li><b>Mind your lantern.</b> Oil burns down slowly. Feed it a card, or climb back to the surface to refill it.</li>
       <li><b>Refine and craft</b> at writing desks. Monster parts become enchantments.</li>
     </ul>
     <button class="primary" data-act="begin">Descend into the chapel</button>
@@ -184,15 +188,28 @@ function renderSide() {
   let action = '';
   if (standingOn?.type === 'exit') {
     const next = REGIONS[run.regionIdx + 1];
-    action = `<div class="prompt"><p>Stairs lead down into <b>${next.name}</b>. There is no coming back up.</p>
+    action = `<div class="prompt"><p>Stairs lead down into <b>${next.name}</b>. You cannot return to this floor.</p>
       <button class="primary" data-act="descend">Descend</button></div>`;
+  } else if (standingOn?.type === 'up') {
+    action = run.oil >= LANTERN.max
+      ? '<div class="prompt"><p>Daylight, far above. Your lantern is full, so there is no reason to climb.</p></div>'
+      : `<div class="prompt"><p>Climb to the surface and refill your lantern. The long way back down will cost you <b>${LANTERN.resurfaceDread} Dread</b>.</p>
+        <button class="primary" data-act="resurface">Resurface</button></div>`;
   }
   const dreadPct = Math.min(100, run.dread / 2);
+  const oilPct = (run.oil / LANTERN.max) * 100;
+  const lanternNote = run.oil <= 0 ? 'Your lantern is out. Things find you twice as often.'
+    : run.oil < 12 ? 'Your lantern is guttering.' : '';
   side.innerHTML = `
     <h2>${region.name}</h2>
     <p class="intro">${region.intro}</p>
     ${action}
-    <div class="meter" title="Dread ${run.dread}"><span style="width:${dreadPct}%"></span><em>Dread ${run.dread}</em></div>
+    <div class="meters">
+      <div class="meter oil${run.oil < 12 ? ' low' : ''}" title="Lantern oil ${run.oil} of ${LANTERN.max}. Light radius ${run.world.radius}."><span style="width:${oilPct}%"></span><em>Lantern ${run.oil}</em></div>
+      <button class="burn" data-act="openBurn" title="Burn a paper, wood or starter card for oil">Burn a card</button>
+      <div class="meter dread" title="Dread ${run.dread}"><span style="width:${dreadPct}%"></span><em>Dread ${run.dread}</em></div>
+    </div>
+    ${lanternNote ? `<p class="warnline">${lanternNote}</p>` : ''}
     <ol class="elog" aria-live="polite">${exploreLog.slice(-5).map(l => `<li>${l}</li>`).join('')}</ol>
     <div class="satchel-mini">
       <h3 class="panel-title">Raw materials</h3>
@@ -202,8 +219,8 @@ function renderSide() {
       <p class="note">${refined} refined ingredients ready to craft.</p>
     </div>
     <ul class="legend">
-      <li><i class="lg-node"></i>Scavenge</li><li><i class="lg-desk"></i>Writing desk</li>
-      <li><i class="lg-merchant"></i>Merchant</li><li><i class="lg-elite"></i>Guardian</li><li><i class="lg-exit"></i>Stairs down</li>
+      ${[['bone', 'Scavenge'], ['chest', 'Reliquary'], ['desk', 'Writing desk'], ['merchant', 'Merchant'],
+        ['stairsDown', 'Stairs down'], ['stairsUp', 'To the surface']].map(([s, l]) => `<li>${portrait(s)}${l}</li>`).join('')}
     </ul>`;
 }
 
@@ -269,6 +286,9 @@ function interact(obj) {
       break;
     case 'exit':
       logExplore('A stair winds down into the dark.');
+      break;
+    case 'up':
+      logExplore('Far above, a square of grey daylight.');
       break;
   }
 }
@@ -439,6 +459,7 @@ function renderFight() {
     const dead = e.hp <= 0;
     const def = ENEMIES[e.key];
     return `<button class="enemy${dead ? ' dead' : ''}${i === target && !dead ? ' targeted' : ''}${def.boss ? ' boss' : def.elite ? ' elite' : ''}" data-act="target" data-idx="${i}" ${dead ? 'disabled' : ''}>
+      ${portrait(e.key, 'foe')}
       <span class="ename">${e.name}</span>
       <span class="edesc">${def.desc}</span>
       ${dead ? '<span class="intent">Unwritten</span>' : `<span class="intents">${intentText(e)}</span>`}
@@ -462,7 +483,7 @@ function renderFight() {
     <div class="enemies">${enemies}</div>
     <div class="table">
       <div class="panel player">
-        <span class="pname">The Inkbinder</span>
+        <span class="pname">${portrait('player', 'me')}The Inkbinder</span>
         ${bars(run.hp, run.maxHp, 'you')}
         <span class="chips">${statusChips(c.player)}${c.player.nextFree ? '<span class="chip free">Next card free</span>' : ''}</span>
         <span class="mana" title="Mana: ${c.player.energy}">${mana}<em>${c.player.energy} mana</em></span>
@@ -512,6 +533,27 @@ function renderShop() {
   </section>`;
 }
 
+function renderBurn() {
+  const cards = run.deck.map(k => {
+    const v = burnValue(k);
+    const why = !v ? `${CARD_MATERIALS[k.cardMat].name} will not burn` : run.oil >= LANTERN.max ? 'Your lantern is full' : run.deck.length <= LANTERN.minDeck ? 'You cannot spare another card' : '';
+    return cardHtml(k, {
+      action: `data-act="burn" data-uid="${k.uid}" title="${why || `Burn for ${v} oil`}"`, disabled: !!why,
+      extra: `<span class="salv">${v ? `+${v} oil` : 'Will not burn'}</span>`,
+    });
+  }).join('');
+  app.innerHTML = `
+  <section class="burnscreen">
+    <header class="screen-head">
+      <h2>Feed the Lantern</h2>
+      <p>Paper and wood burn, and so do the starter cards. Stone and metal will not. Lantern oil: <b>${run.oil} / ${LANTERN.max}</b>.</p>
+    </header>
+    ${notice ? `<p class="notice ${notice.tone || ''}" role="status">${notice.text}</p>` : ''}
+    <div class="panel"><div class="cards">${cards}</div></div>
+    <footer class="screen-foot"><button class="primary" data-act="toMap">Back to exploring</button></footer>
+  </section>`;
+}
+
 function renderEnd(won) {
   app.innerHTML = `
   <section class="end center">
@@ -539,6 +581,7 @@ function render() {
     case 'shop': renderShop(); break;
     case 'won': renderEnd(true); break;
     case 'lost': renderEnd(false); break;
+    case 'burn': renderBurn(); break;
   }
 }
 
@@ -562,15 +605,28 @@ function afterCombatAction() {
 const actions = {
   begin() {
     run = createRun();
-    exploreLog = ['Your lantern gutters. Tap a tile to walk there, or use WASD or the arrow keys.'];
-    standingOn = null;
+    exploreLog = ['You light your lantern at the top of the stair. Tap a tile to walk there, or use WASD or the arrow keys.'];
+    standingOn = objectAt(run.world, run.world.px, run.world.py);
     screen = 'explore';
   },
   restart() { run = null; screen = 'title'; },
   toMap() { notice = null; screen = 'explore'; },
+  openBurn() { walkPath = null; notice = null; screen = 'burn'; },
+  burn({ uid }) {
+    const r = burnCard(run, uid);
+    if (r.error) { notice = { text: r.error, tone: 'warn' }; return; }
+    notice = { text: `${r.card.name} curls into the flame. +${r.oil} oil.` };
+    logExplore(`You burn ${r.card.name}. The light swells.`);
+  },
+  resurface() {
+    const r = resurface(run);
+    if (r.error) { logExplore(r.error); return; }
+    walkPath = null;
+    logExplore(`You climb to the surface and refill your lantern. The climb back down frays your nerves (+${r.dread} Dread).`);
+  },
   descend() {
     const r = descend(run);
-    standingOn = null;
+    standingOn = objectAt(run.world, run.world.px, run.world.py);
     exploreLog = [`You catch your breath on the long stair and recover ${r.heal} HP.`];
     screen = 'explore';
   },

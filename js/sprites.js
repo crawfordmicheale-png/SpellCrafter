@@ -1,0 +1,629 @@
+// Hand-drawn pixel art. Each sprite is 16x16; each character is one pixel
+// looked up in PALETTE ('.' is transparent). Tiles use the digits 1-9, which
+// each region maps to its own colors, so one drawing serves every floor.
+
+export const PALETTE = {
+  k: '#0d0a10', // outline
+  d: '#2a2230', g: '#4a4050', G: '#7a7080', // greys
+  w: '#e8e0cc', W: '#fff6de',               // bone, highlight
+  n: '#3d2615', b: '#6b4527', B: '#8a5a33', // wood
+  x: '#b9a57e', X: '#8a7650',               // cloth
+  r: '#6e1a16', R: '#c0392b', o: '#e07a2a', // blood, ember
+  y: '#ffd27a', Y: '#fff1b8',               // flame
+  a: '#a8813f', A: '#e0b95c',               // brass, gold
+  s: '#8f98a3', S: '#d8dde3',               // silver
+  u: '#26446b', U: '#5d8fc9',               // blue
+  e: '#2e5a2b', E: '#6fa35f',               // green
+  p: '#4a3560', P: '#8e5fb0',               // purple
+  c: '#2c2433', C: '#574a60',               // cloak
+  t: '#1f3a40', T: '#4f8a8f',               // drowned teal
+};
+
+export const SPRITES = {
+  player: [
+    '................',
+    '......kkkk......',
+    '.....kCCCCk.....',
+    '....kCCccCCk....',
+    '....kCkkkkck....',
+    '....kkWkkWkk....',
+    '....kCkkkkCk.k..',
+    '...kCCckkcCCkak.',
+    '..kCccccccccCaya',
+    '..kCcccccccCkaYa',
+    '..kccCcccCcck.a.',
+    '..kcccCcccCccck.',
+    '..kccCcccccCcck.',
+    '...kcccccccccck.',
+    '...kkcckkkcckk..',
+    '....kk.....kk...',
+  ],
+
+  // ----- floor and wall tiles (region palette digits) -----
+  floor1: [
+    '3111111131111111',
+    '3121111131111121',
+    '3111111131111111',
+    '3111121131112111',
+    '3111111131111111',
+    '3111111131111111',
+    '3112111131211111',
+    '3333333333333333',
+    '1111311111111311',
+    '1111311112111311',
+    '1211311111111311',
+    '1111311111111311',
+    '1111311211121311',
+    '1111311111111311',
+    '1111311111111311',
+    '3333333333333333',
+  ],
+  floor2: [
+    '3111111131111111',
+    '3111111131113111',
+    '3112111131131111',
+    '3111111133111111',
+    '3111111311111211',
+    '3111113131111111',
+    '3111131131111111',
+    '3333333333333333',
+    '1111311111111311',
+    '1111311111111311',
+    '1111314111111311',
+    '1111344411121311',
+    '1111311411111311',
+    '1211311111111311',
+    '1111311111111311',
+    '3333333333333333',
+  ],
+  floor3: [
+    '1111111111111111',
+    '1121111111111111',
+    '1111111113111111',
+    '1111111111111121',
+    '1111311111111111',
+    '1111111111211111',
+    '1111111111111111',
+    '1211111111111111',
+    '1111111131111111',
+    '1111111111111111',
+    '1111121111111131',
+    '1111111111111111',
+    '1311111111211111',
+    '1111111111111111',
+    '1111111311111121',
+    '1111111111111111',
+  ],
+  wallFace: [
+    '6666666666666666',
+    '5555555755555555',
+    '5555555755555555',
+    '5555555755555555',
+    '7777777777777777',
+    '5557555555575555',
+    '5557555555575555',
+    '5557555555575555',
+    '7777777777777777',
+    '5555555755555555',
+    '5555555755555555',
+    '5555555755555555',
+    '7777777777777777',
+    '8888888888888888',
+    '8888888888888888',
+    '8888888888888888',
+  ],
+  wallTop: [
+    '9999999999999999',
+    '9999999999979999',
+    '9979999999999999',
+    '9999999999999999',
+    '9999999799999999',
+    '9999999999999979',
+    '9999999999999999',
+    '9799999999999999',
+    '9999999999799999',
+    '9999999999999999',
+    '9999979999999999',
+    '9999999999999999',
+    '9999999999999799',
+    '9979999999999999',
+    '9999999999999999',
+    '9999999799999999',
+  ],
+
+  // ----- scavenge spots -----
+  ash: [
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '.......kk.......',
+    '......kGGk......',
+    '.....kGgGGk.....',
+    '....kGggggGk....',
+    '...kGggdgggGk...',
+    '..kGgggggoggGk..',
+    '.kGggdggggggdGk.',
+    '.kgggggggggggggk',
+    '..kkkkkkkkkkkk..',
+  ],
+  bone: [
+    '................',
+    '................',
+    '....kkkkkkkk....',
+    '...kddddddddk...',
+    '..kdkkkkkkkkdk..',
+    '..kdkkwwwwkkdk..',
+    '..kdkwwwwwwkdk..',
+    '..kdkwkwwkwkdk..',
+    '..kdkwwwwwwkdk..',
+    '..kdkkwkwkkkdk..',
+    '..kdwkkkkkkwdk..',
+    '..kdkwwkkwwkdk..',
+    '..kdwwwwwwwwdk..',
+    '..kdkwwkkwwkdk..',
+    '..kddddddddddk..',
+    '..kkkkkkkkkkkk..',
+  ],
+  rags: [
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '......kkkk......',
+    '....kkxxxxkk....',
+    '...kxxXxxxxxk...',
+    '..kxXxxxXxrXxk..',
+    '.kxxxXxxxxXrxxk.',
+    '.kXxxxxXxxxxxXk.',
+    'kxxXxxxxxXxxxxxk',
+    '.kkkkkkkkkkkkkk.',
+  ],
+  timber: [
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '..kk............',
+    '.kBBkk.....kk...',
+    '.kbBBBkk..kBBk..',
+    '..kbbBBBkkBbbk..',
+    '...kkbbbBBbbnk..',
+    '.kkBBBbbbbnnnkk.',
+    'kbbbbnnnnkkkk...',
+  ],
+  grave: [
+    '................',
+    '................',
+    '.......kk.......',
+    '.......kbk......',
+    '.....kbbbbbk....',
+    '.....kkkbkkk....',
+    '.......kbk......',
+    '.......kbk......',
+    '.......kbk......',
+    '....kkkkbkkkk...',
+    '...kppdkbkdppk..',
+    '..kpdppdpdppdpk.',
+    '.kpppdpppppdpppk',
+    '.kdpppppdppppdpk',
+    'kpppdppppppdpppk',
+    'kkkkkkkkkkkkkkkk',
+  ],
+  plant: [
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '......kkk.......',
+    '....kkEEEkk.....',
+    '...kEEeEEeEk....',
+    '..kEeERReeEEk...',
+    '..kEeRRReEeEk...',
+    '.kEEeeReEEReEk..',
+    '.keEEEeeeRReek..',
+    '..kkeeRRReekk...',
+    '....kknRnnkk....',
+    '.....knknkk.....',
+  ],
+  slate: [
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '.....kkk........',
+    '....kGGgk..kk...',
+    '...kGgggdkkGgk..',
+    '..kkGgddkkGgggk.',
+    '.kGgkkkkGggdddk.',
+    'kGgggdkGgggdddk.',
+    '.kkkkkkkkkkkkk..',
+  ],
+  ore: [
+    '................',
+    '................',
+    '................',
+    '....kkkkkk......',
+    '...kgggGggkk....',
+    '..kggSsgggGgk...',
+    '..kgsSSgdgggk...',
+    '.kgggsgggSsggk..',
+    '.kgdggggsSSgdk..',
+    '.kggGgsggsgggk..',
+    'kggSsggdgggSgggk',
+    'kgsSSsggggsSsgdk',
+    'kgggsgdgggggsggk',
+    'kgdgggggSsgggdgk',
+    '.kggdggsSSggggk.',
+    '..kkkkkkkkkkkk..',
+  ],
+  tomes: [
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '....kkkkkkkk....',
+    '...krrrrrrrrk...',
+    '...kAaaaaaaAk...',
+    '..kkkkkkkkkkkk..',
+    '..kuuuuuuuuuuk..',
+    '..kAaaaaaaaaAk..',
+    '.kkkkkkkkkkkkkk.',
+    '.kpppppppppppAk.',
+    '.kAaaaaaaaaaaAk.',
+    '.kkkkkkkkkkkkkk.',
+  ],
+
+  // ----- places and people -----
+  chest: [
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '...kkkkkkkkkk...',
+    '..kbBBBBBBBBbk..',
+    '..kBbbbbbbbbBk..',
+    '..kaaaaaaaaaak..',
+    '..kbbbbkakbbbk..',
+    '..kbbbbkykbbbk..',
+    '..kbbbbbkbbbbk..',
+    '..kaaaaaaaaaak..',
+    '..knnnnnnnnnnk..',
+    '..kkkkkkkkkkkk..',
+  ],
+  desk: [
+    '............y...',
+    '...........yYy..',
+    '............y...',
+    '...........kwk..',
+    '...........kwk..',
+    '...........kwk..',
+    '..kkkkkkk..kwk..',
+    '.kwwwkwwwk.kkk..',
+    'kkkkkkkkkkkkkkkk',
+    'kBBBBBBBBBBBBBBk',
+    'kbbbbbbbbbbbbbbk',
+    'knnkkkkkkkkkknnk',
+    '.kbk........kbk.',
+    '.kbk........kbk.',
+    '.kbk........kbk.',
+    '.kkk........kkk.',
+  ],
+  merchant: [
+    '................',
+    '.....kkkk.......',
+    '....kXXXXk.kkk..',
+    '...kXxxxxXkbBbk.',
+    '...kxkkkkxkbbbk.',
+    '...kkykkykkBbBk.',
+    '...kxkkkkxkbbbk.',
+    '..kxxxkkxxxkbbk.',
+    '..kxXxxxxXxkkk..',
+    '.kaxxXxxxxXxk...',
+    'kayaxxxXxxxxk...',
+    'kaYaxXxxxxXxk...',
+    '.kakxxxxxxxxk...',
+    '...kxxXxxXxxk...',
+    '...kxxxxxxxxk...',
+    '....kk....kk....',
+  ],
+  stairsDown: [
+    'kkkkkkkkkkkkkkkk',
+    'kGGGGGGGGGGGGGGk',
+    'kggggggggggggggk',
+    'kkkkkkkkkkkkkkkk',
+    'kkGGGGGGGGGGGGkk',
+    'kkggggggggggggkk',
+    'kkkkkkkkkkkkkkkk',
+    'kkkggggggggggkkk',
+    'kkkddddddddddkkk',
+    'kkkkkkkkkkkkkkkk',
+    'kkkkddddddddkkkk',
+    'kkkkkkkkkkkkkkkk',
+    'kkkkkddddddkkkkk',
+    'kkkkkkkkkkkkkkkk',
+    'kkkkkkkkkkkkkkkk',
+    'kkkkkkkkkkkkkkkk',
+  ],
+  stairsUp: [
+    '....kyyyyyyk....',
+    '....kYyyyyYk....',
+    '...kkkkkkkkkk...',
+    '...kGGGGGGGGk...',
+    '..kkkkkkkkkkkk..',
+    '..kGGGGGGGGGGk..',
+    '..kggggggggggk..',
+    '.kkkkkkkkkkkkkk.',
+    '.kGGGGGGGGGGGGk.',
+    '.kggggggggggggk.',
+    'kkkkkkkkkkkkkkkk',
+    'kGGGGGGGGGGGGGGk',
+    'kggggggggggggggk',
+    'kddddddddddddddk',
+    'kkkkkkkkkkkkkkkk',
+    '................',
+  ],
+
+  // ----- creatures -----
+  acolyte: [
+    '......kkkk......',
+    '.....kbnnbk.....',
+    '....kbnkknbk....',
+    '....knkkkknk....',
+    '....knkddknk....',
+    '....kbnkknbk....',
+    '...kbbnnnnbbk...',
+    '..kbbnbbbbnbbk..',
+    '..kbnbbbbbbnbk..',
+    '..kbnbaaaabnbk..',
+    '..kbnbbbabbnbk..',
+    '..kbnbbbabbnbk..',
+    '..kbnbbbbbbnbk..',
+    '.kbnnbbbbbbnnbk.',
+    '.knnnnnnnnnnnnk.',
+    '.kkkkkkkkkkkkkk.',
+  ],
+  gravemoth: [
+    '................',
+    '................',
+    '.kk..........kk.',
+    'kGGk...kk...kGGk',
+    'kGgGk.k..k.kGgGk',
+    'kGggGk.kk.kGggGk',
+    'kGgwgGkddkGgwgGk',
+    'kGwkwgGddGgwkwGk',
+    'kGgwgggddgggwgGk',
+    '.kGgggkddkgggGk.',
+    '..kGgk.dd.kgGk..',
+    '..kGgk.kk.kgGk..',
+    '...kk..dd..kk...',
+    '.......kk.......',
+    '................',
+    '................',
+  ],
+  hound: [
+    '................',
+    '................',
+    '................',
+    '...kk...........',
+    '..kGGk..........',
+    '.kGgggkkkkkkk...',
+    'kGoggGgggggggk..',
+    'kggggggGgggggGk.',
+    '.kkggdgggggggGgk',
+    '..kgggdggggggggk',
+    '..kggkkggggkgggk',
+    '..kgk.kgk.kgkkk.',
+    '..kok.kgk.kok...',
+    '..kk..kk..kk....',
+    '................',
+    '................',
+  ],
+  ghoul: [
+    '.......y........',
+    '......yYy.......',
+    '.......w........',
+    '......kwk.......',
+    '.....kEEEk......',
+    '....kEkEkEk.....',
+    '....kEEEEEk.....',
+    '....kkRRRkk.....',
+    '...kEEkkkEEk....',
+    '..kEeEEEEEeEk...',
+    '.kEk.keeek.kEk..',
+    'kEk..keeek..kEk.',
+    'kk...kekek...kk.',
+    '.....kk.kk......',
+    '................',
+    '................',
+  ],
+  drowned: [
+    '................',
+    '.....kkkkk......',
+    '....kTtTtTk.....',
+    '...kTtkkktTk....',
+    '...ktkUkUktk....',
+    '...kTkkkkkTk....',
+    '..kTtTkkkTtTk...',
+    '..ktTttttttTk...',
+    '.kTtwwwwwtttTk..',
+    '.ktTwdddwttTtk..',
+    '.kTtwwwwwtTttk..',
+    '..kTtttttttTk...',
+    '..ktTtTtTtTtk...',
+    '..kTtTtTtTtTk...',
+    '...UkUkUkUk.....',
+    '....U...U.......',
+  ],
+  warden: [
+    '......kkkk......',
+    '.....kggggk.....',
+    '....kgkkkkgk....',
+    '....kkRkkRkk....',
+    '....kgkkkkgk....',
+    '...kggggggggk...',
+    '..kgggGggGgggk..',
+    '.kggGggggggGggk.',
+    '.kgkggggggggkgk.',
+    '.kak.kggggggk...',
+    'kaAak.kggggk....',
+    'kaAak.kggggk....',
+    'kaaaak.kggk.....',
+    '.kyk..kggggk....',
+    '......kgkkgk....',
+    '......kk..kk....',
+  ],
+  scrivener: [
+    '.....kkkkk......',
+    '....kwwwwwk.....',
+    '....kwkwkwk.....',
+    '....kwwwwwk.....',
+    '.....kwwwk...k..',
+    '....kSSSSSk.kWk.',
+    '...kSsssssSkkWk.',
+    '..kSsssssssSwk..',
+    '..kSsSsssSsSk...',
+    '..kssSsssSssk...',
+    '..kSsssssssSk...',
+    '..kssSsssSssk...',
+    '..kSssssssssk...',
+    '..ktssssssstk...',
+    '..kktkttktkkk...',
+    '...t..t...t.....',
+  ],
+  grimoire: [
+    '................',
+    '................',
+    '.kkkkkk..kkkkkk.',
+    'krwwwwwkkwwwwwrk',
+    'krwddwwkkwwddwrk',
+    'krwwwwkRRkwwwwrk',
+    'krwddwkRYRkddwrk',
+    'krwwwwkRRkwwwwrk',
+    'krwddwwkkwwddwrk',
+    'krwwwwwkkwwwwwrk',
+    'krrrrrrkkrrrrrrk',
+    '.kkkkkkkkkkkkkk.',
+    '....r......r....',
+    '...r........r...',
+    '....r......r....',
+    '................',
+  ],
+};
+
+// Palette swaps so one drawing covers several things.
+export const SWAPS = {
+  moss: { R: 'E', e: 'e', n: 'e' },
+  kelp: { E: 'T', e: 't', R: 'U', n: 't' },
+  gold: { s: 'a', S: 'A' },
+};
+
+// Which sprite (and swap) each raw material's scavenge spot uses.
+export const NODE_SPRITES = {
+  ash: ['ash'], bone: ['bone'], rags: ['rags'], timber: ['timber'], gravesoil: ['grave'],
+  bloodroot: ['plant'], moss: ['plant', 'moss'], kelp: ['plant', 'kelp'],
+  slate: ['slate'], silver: ['ore'], gold: ['tomes'],
+};
+
+// Ink glyphs for the cards, 9x9 masks tinted with the ink's color.
+export const GLYPHS = {
+  red: [
+    '....#....', '...##....', '...###...', '..####.#.', '.#######.',
+    '.###.###.', '.##...##.', '..##.##..', '...###...',
+  ],
+  white: [
+    '#########', '####.####', '####.####', '#.......#', '####.####',
+    '.###.###.', '.###.###.', '..##.##..', '....#....',
+  ],
+  blue: [
+    '.........', '..#####..', '.#.....#.', '#..###..#', '#.##.##.#',
+    '#..###..#', '.#.....#.', '..#####..', '.........',
+  ],
+  green: [
+    '.......##', '.....####', '...###.##', '..###.###', '.###.####',
+    '.##.####.', '.#.####..', '#.###....', '#........',
+  ],
+  black: [
+    '..#####..', '.#######.', '#########', '#..###..#', '#..###..#',
+    '####.####', '.#######.', '.#.#.#.#.', '.........',
+  ],
+};
+
+// ---------- rendering (browser only) ----------
+
+const cache = new Map();
+
+function paint(rows, lookup) {
+  const c = document.createElement('canvas');
+  c.width = rows[0].length; c.height = rows.length;
+  const ctx = c.getContext('2d');
+  rows.forEach((row, y) => [...row].forEach((ch, x) => {
+    const col = lookup(ch);
+    if (!col) return;
+    ctx.fillStyle = col;
+    ctx.fillRect(x, y, 1, 1);
+  }));
+  return c;
+}
+
+// An offscreen canvas at 1px per pixel. `tiles` maps digits to colors.
+export function sprite(name, { swap, tiles } = {}) {
+  const key = `${name}|${swap || ''}|${tiles ? Object.values(tiles).join() : ''}`;
+  if (!cache.has(key)) {
+    const map = swap ? SWAPS[swap] : null;
+    cache.set(key, paint(SPRITES[name], ch => {
+      if (ch === '.') return null;
+      if (tiles && ch >= '1' && ch <= '9') return tiles[ch];
+      return PALETTE[map?.[ch] || ch];
+    }));
+  }
+  return cache.get(key);
+}
+
+// A data URL for using a sprite in the page (enemy portraits and so on).
+export function spriteURL(name, opts) {
+  const key = `url|${name}|${opts?.swap || ''}`;
+  if (!cache.has(key)) cache.set(key, sprite(name, opts).toDataURL());
+  return cache.get(key);
+}
+
+// A glyph with a 1px dark outline, returned as a data URL.
+export function glyphURL(color) {
+  const key = `glyph|${color}`;
+  if (!cache.has(key)) {
+    const mask = GLYPHS[color];
+    const h = mask.length + 2, w = mask[0].length + 2;
+    const on = (x, y) => mask[y - 1]?.[x - 1] === '#';
+    const rows = Array.from({ length: h }, (_, y) => Array.from({ length: w }, (_, x) => {
+      if (on(x, y)) return '#';
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (on(x + dx, y + dy)) return 'k';
+      return '.';
+    }).join(''));
+    const ink = { red: '#d9452f', white: '#efe6cf', blue: '#5d8fc9', green: '#6fa35f', black: '#8e5fb0' }[color];
+    cache.set(key, paint(rows, ch => ch === '#' ? ink : ch === 'k' ? '#0d0a10' : null).toDataURL());
+  }
+  return cache.get(key);
+}
