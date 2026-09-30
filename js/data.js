@@ -40,6 +40,8 @@ export const ENCHANTMENTS = {
   leech:     { name: 'Leech',     part: 'Hound Fang',       desc: 'Heal for a quarter of the damage dealt.' },
   siphon:    { name: 'Siphon',    part: 'Grave Candle',     desc: 'Gain 1 mana if this kills an enemy.' },
   hungering: { name: 'Hungering', part: 'Ghoul Tongue',     desc: 'Gets +2 stronger each time you cast it in a fight.' },
+  piercing:  { name: 'Piercing',  part: "Weaver's Needle",  desc: 'Damage ignores Block.' },
+  hallowed:  { name: 'Hallowed',  part: "Saint's Knucklebone", desc: 'Also gain 4 Block when cast.' },
 };
 
 // Raw materials are what you scavenge in the world. Refine them at a writing desk.
@@ -142,6 +144,34 @@ export const RECIPES = [
     hint: 'Rot and moss in ash, on a humble plank.',
     flavor: 'What dies here feeds what grows here.',
   },
+  {
+    id: 'litany', name: "Saint's Litany",
+    match: { colors: ['green', 'white'], inkMat: 'silver', cardMat: 'silver', enchants: ['hallowed'] },
+    effects: [{ type: 'block', amount: 12 }, { type: 'heal', amount: 5 }],
+    hint: 'A sanctuary, silvered twice, blessed by a saint.',
+    flavor: 'Said over every body in the catacombs. None of them stayed down.',
+  },
+  {
+    id: 'needlestorm', name: 'Needlestorm',
+    match: { colors: ['black', 'red'], inkMat: 'blood', cardMat: 'wood', enchants: ['piercing'] },
+    effects: [{ type: 'damage', amount: 6 }, { type: 'damage', amount: 6 }, { type: 'poison', amount: 3 }],
+    hint: 'Hexfire in blood, stitched through wood with a needle.',
+    flavor: 'The weaver never misses the same place twice.',
+  },
+  {
+    id: 'hymn', name: 'Drowned Hymn',
+    match: { colors: ['blue', 'white'], inkMat: 'charcoal', cardMat: 'paper' },
+    effects: [{ type: 'draw', amount: 2 }, { type: 'block', amount: 5 }],
+    hint: 'An aegis in ash on a single sheet.',
+    flavor: 'Sung underwater, it sounds like breathing.',
+  },
+  {
+    id: 'emberrite', name: 'Ember Rite',
+    match: { colors: ['red'], inkMat: 'gold', cardMat: 'gold' },
+    effects: [{ type: 'damageAll', amount: 9 }],
+    hint: 'Crimson and gold, on gold.',
+    flavor: 'The chapel burned brightest the night they gilded the altar.',
+  },
 ];
 
 // Uncraftable starting cards. Permanent.
@@ -232,6 +262,43 @@ export const ENEMIES = {
     ],
     drops: ['ench_bound', 'raw_gold', 'raw_gold', 'raw_heart', 'raw_silver'],
   },
+  wraith: {
+    name: 'Choir Wraith', hp: 20,
+    desc: 'It still sings the funeral hymn. The notes cut.',
+    moves: [
+      { actions: [{ type: 'debuff', status: 'weak', amount: 2 }, { type: 'attack', amount: 3 }] },
+      { actions: [{ type: 'attack', amount: 7 }] },
+    ],
+    drops: ['raw_bone', 'raw_ash', 'ench_echo', 'raw_silver'],
+  },
+  boneweaver: {
+    name: 'Bone Weaver', hp: 26,
+    desc: 'It builds its webs from finger bones and threads them with sinew.',
+    moves: [
+      { actions: [{ type: 'block', amount: 6 }, { type: 'attack', amount: 5 }] },
+      { actions: [{ type: 'attack', amount: 3, times: 3 }] },
+    ],
+    drops: ['ench_piercing', 'raw_bone', 'raw_bone', 'raw_slate'],
+  },
+  inkling: {
+    name: 'Ink Wraith', hp: 16,
+    desc: 'A spell that escaped its page. It wants a new one.',
+    moves: [
+      { actions: [{ type: 'attack', amount: 4 }, { type: 'debuff', status: 'poison', amount: 3 }] },
+      { actions: [{ type: 'attack', amount: 6 }] },
+    ],
+    drops: ['raw_kelp', 'raw_gravesoil', 'ench_bound', 'raw_gold'],
+  },
+  saint: {
+    name: 'The Ossuary Saint', hp: 58, elite: true,
+    desc: 'Canonised for building the catacombs. He is still adding to them.',
+    moves: [
+      { actions: [{ type: 'attack', amount: 12 }] },
+      { actions: [{ type: 'block', amount: 12 }, { type: 'buff', status: 'strength', amount: 2 }] },
+      { actions: [{ type: 'debuff', status: 'weak', amount: 2 }, { type: 'debuff', status: 'poison', amount: 3 }] },
+    ],
+    drops: ['ench_hallowed', 'ench_hallowed', 'raw_silver', 'raw_gold', 'raw_heart'],
+  },
   grimoire: {
     name: 'The Unbound Grimoire', hp: 110, boss: true,
     desc: 'The first book. It has been waiting for a new hand to hold it.',
@@ -254,7 +321,7 @@ export const REGIONS = [
     raws: { ash: 3, bone: 3, rags: 2, timber: 2, gravesoil: 2, bloodroot: 2, moss: 1 },
     nodes: 13, chests: 2,
     encounters: [['acolyte'], ['gravemoth', 'gravemoth'], ['gravemoth'], ['acolyte', 'gravemoth']],
-    elite: 'warden', merchant: true, hpMult: 1,
+    elite: 'warden', merchant: true, hpMult: 1, events: 1,
     tiles: { 1: '#2b2430', 2: '#352c3c', 3: '#1d1822', 4: '#4f7a45', 5: '#4a3f50', 6: '#6b5a74', 7: '#2a2230', 8: '#1f1a24', 9: '#231c28' },
   },
   {
@@ -263,16 +330,25 @@ export const REGIONS = [
     raws: { kelp: 3, moss: 2, slate: 2, silver: 2, rags: 2, bloodroot: 1, bone: 1 },
     nodes: 14, chests: 2,
     encounters: [['drowned'], ['drowned', 'gravemoth'], ['hound'], ['ghoul']],
-    elite: 'scrivener', merchant: true, hpMult: 1.15,
+    elite: 'scrivener', merchant: true, hpMult: 1.1, events: 2,
     tiles: { 1: '#1f2a30', 2: '#27363d', 3: '#141c21', 4: '#3f7a6f', 5: '#3a4d56', 6: '#557582', 7: '#1f2c33', 8: '#162027', 9: '#18242a' },
+  },
+  {
+    name: 'The Catacombs',
+    intro: 'The dead here were buried standing up, facing the stair. They are still waiting for someone to come down it.',
+    raws: { bone: 3, gravesoil: 3, ash: 2, slate: 2, silver: 1, moss: 1, timber: 1 },
+    nodes: 13, chests: 2,
+    encounters: [['wraith'], ['boneweaver'], ['wraith', 'acolyte'], ['boneweaver', 'gravemoth']],
+    elite: 'saint', merchant: true, hpMult: 1.2, events: 2,
+    tiles: { 1: '#2a2826', 2: '#34312d', 3: '#1a1816', 4: '#6b6a4a', 5: '#4d4944', 6: '#79736a', 7: '#2a2724', 8: '#1e1c1a', 9: '#22201e' },
   },
   {
     name: 'The Last Library',
     intro: 'Every book here was written by an Inkbinder. Most of them are still screaming.',
     raws: { gold: 2, silver: 2, bloodroot: 2, gravesoil: 2, bone: 1, slate: 1, kelp: 1 },
     nodes: 12, chests: 3,
-    encounters: [['hound', 'ghoul'], ['drowned', 'drowned'], ['ghoul', 'gravemoth', 'gravemoth'], ['acolyte', 'hound']],
-    elite: null, boss: 'grimoire', merchant: false, hpMult: 1.3,
+    encounters: [['hound', 'ghoul'], ['inkling', 'inkling'], ['ghoul', 'gravemoth', 'gravemoth'], ['inkling', 'wraith'], ['boneweaver', 'inkling']],
+    elite: null, boss: 'grimoire', merchant: false, hpMult: 1.3, events: 1,
     tiles: { 1: '#2e2320', 2: '#392b26', 3: '#1e1614', 4: '#8a6a2a', 5: '#523a2e', 6: '#7a5840', 7: '#2e201a', 8: '#221814', 9: '#241915' },
   },
 ];
@@ -291,4 +367,44 @@ export const LANTERN = {
   burn: { starter: 8, paper: 15, wood: 30 }, // oil gained by burning a card
   resurfaceDread: 30,    // the climb back down frays your nerves
   minDeck: 5,
+};
+
+// Random events found on the map. Outcomes are resolved in events.js.
+export const EVENTS = {
+  shrine: {
+    name: 'Candle Shrine',
+    text: 'A shrine to a saint nobody remembers. Someone keeps the candles lit.',
+    options: [
+      { id: 'pray', label: 'Pray', desc: 'Heal 12 HP. Dread +10.' },
+      { id: 'take', label: 'Take the candles', desc: '+30 lantern oil. Lose 4 max HP.' },
+      { id: 'leave', label: 'Leave it be', desc: '' },
+    ],
+  },
+  scribe: {
+    name: 'The Trapped Scribe',
+    text: 'A scribe lies pinned under a fallen shelf, a page clutched to his chest. "Help me and I will teach you what is written here."',
+    options: [
+      { id: 'free', label: 'Lift the shelf', desc: 'Lose 8 HP. Learn a spell for your Grimoire.' },
+      { id: 'rob', label: 'Take his purse', desc: '+35 gold. Dread +25.' },
+      { id: 'leave', label: 'Walk on', desc: 'Dread +5.' },
+    ],
+  },
+  well: {
+    name: 'The Ink Well',
+    text: 'A stone well filled to the brim with black ink. Something turns over beneath the surface.',
+    options: [
+      { id: 'drink', label: 'Drink', desc: 'Either gain 2 monster parts or lose 10 HP.' },
+      { id: 'bottle', label: 'Fill your bottles', desc: 'Gain 2 random ink colors. Dread +10.' },
+      { id: 'leave', label: 'Leave it', desc: '' },
+    ],
+  },
+  lanterns: {
+    name: 'Hanged Lanterns',
+    text: 'Lanterns hang from the vault on long chains, still burning. The chains are rusted through.',
+    options: [
+      { id: 'cut', label: 'Cut one down', desc: '+40 lantern oil. The crash will draw something.' },
+      { id: 'climb', label: 'Climb for the oil', desc: '+25 lantern oil. Lose 6 HP.' },
+      { id: 'leave', label: 'Leave them', desc: '' },
+    ],
+  },
 };

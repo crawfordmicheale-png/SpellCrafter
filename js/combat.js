@@ -71,9 +71,9 @@ function loseHp(c, n, source) {
   if (c.run.hp <= 0) c.over = 'lost';
 }
 
-function damageEnemy(c, enemy, amount) {
+function damageEnemy(c, enemy, amount, pierce = false) {
   if (c.player.weak > 0) amount = Math.floor(amount * 0.75);
-  const blocked = Math.min(enemy.block, amount);
+  const blocked = pierce ? 0 : Math.min(enemy.block, amount);
   enemy.block -= blocked;
   const dealt = Math.min(enemy.hp, amount - blocked);
   enemy.hp -= dealt;
@@ -126,6 +126,7 @@ export function playCard(c, cardUid, targetIdx = 0) {
   if (card.hpCost) loseHp(c, card.hpCost, 'blood price');
 
   let dealtTotal = 0, killed = false;
+  const pierce = card.enchants.includes('piercing');
   const growth = card.enchants.includes('hungering') ? 2 * (c.hunger[card.uid] || 0) : 0;
   const apply = (scale) => {
     for (const e of card.effects) {
@@ -135,13 +136,13 @@ export function playCard(c, cardUid, targetIdx = 0) {
         case 'damage': {
           if (!target || target.hp <= 0) target = alive(c)[0];
           if (!target) break;
-          const r = damageEnemy(c, target, n);
+          const r = damageEnemy(c, target, n, pierce);
           dealtTotal += r.dealt; killed ||= r.killed;
           break;
         }
         case 'damageAll':
           for (const en of alive(c)) {
-            const r = damageEnemy(c, en, n);
+            const r = damageEnemy(c, en, n, pierce);
             dealtTotal += r.dealt; killed ||= r.killed;
           }
           break;
@@ -166,6 +167,7 @@ export function playCard(c, cardUid, targetIdx = 0) {
   if (card.enchants.includes('echo')) { log(c, `${card.name} echoes.`); apply(0.5); }
 
   if (card.enchants.includes('hungering')) c.hunger[card.uid] = (c.hunger[card.uid] || 0) + 1;
+  if (card.enchants.includes('hallowed')) c.player.block += 4;
   if (card.enchants.includes('leech') && dealtTotal > 0) {
     const heal = Math.floor(dealtTotal / 4);
     c.run.hp = Math.min(c.run.maxHp, c.run.hp + heal);

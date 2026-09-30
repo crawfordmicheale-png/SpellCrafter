@@ -1,7 +1,10 @@
 import {
   INK_COLORS, INK_MATERIALS, CARD_MATERIALS, ENCHANTMENTS, INGREDIENTS, RECIPES, ENEMIES, REPAIR_PRICE,
-  REGIONS, REFINING, RAW_MATERIALS, LANTERN,
+  REGIONS, REFINING, RAW_MATERIALS, LANTERN, EVENTS,
 } from './data.js';
+import { resolveEvent } from './events.js';
+import { loadMeta, learn, recordRun, forget, loadSoundPref, saveSoundPref } from './meta.js';
+import { unlock, sfx, setEnabled, isEnabled, startAmbient, stopAmbient } from './audio.js';
 import { spriteURL, glyphURL } from './sprites.js';
 import { craftCard, validateBlueprint, describeCard, cardComponents } from './crafting.js';
 import { createCombat, playCard, endTurn, canPlay, effectiveCost, currentMove } from './combat.js';
@@ -33,6 +36,11 @@ let walkPath = null;
 let walkTimer = 0;
 let lastStepAt = 0;
 let standingOn = null;
+let eventCtx = null;  // { obj, id, result }
+let lastScreen = null;
+let forgetArmed = false;
+let meta = loadMeta();
+setEnabled(loadSoundPref());
 
 const STEP_MS = 85;
 const emptyBlueprint = () => ({ cardMat: null, colors: [], inkMat: null, enchants: [] });
@@ -66,7 +74,9 @@ function cardHtml(card, { cost = card.cost, disabled = false, action = '', extra
   const ench = card.enchants.map(e => `<span class="tag" title="${ENCHANTMENTS[e].desc}">${ENCHANTMENTS[e].name}</span>`).join('');
   const inkLabel = card.inkMat ? `${INK_MATERIALS[card.inkMat].name} ink on ${CARD_MATERIALS[card.cardMat].name.toLowerCase()}` : 'Starter';
   const tag = action ? 'button' : 'div';
-  return `<${tag} class="card mat-${mat}${card.recipeId ? ' named' : ''}${disabled ? ' disabled' : ''}" ${action} ${disabled && action ? 'aria-disabled="true"' : ''}>
+  // Wordy cards get a compact layout so their text stays on the card.
+  const dense = describeCard(card).length + (card.flavor ? 1 : 0) >= 4;
+  return `<${tag} class="card mat-${mat}${card.recipeId ? ' named' : ''}${dense ? ' dense' : ''}${disabled ? ' disabled' : ''}" ${action} ${disabled && action ? 'aria-disabled="true"' : ''}>
     <span class="cost${cost < card.cost ? ' free' : ''}">${cost}</span>
     ${card.hpCost ? `<span class="blood" title="Costs ${card.hpCost} HP">${card.hpCost}</span>` : ''}
     <span class="cname">${card.name}</span>
@@ -110,9 +120,11 @@ function bars(cur, max, cls = '') {
 
 // ---------- top bar ----------
 
+const soundButton = () => `<button class="soundtoggle" data-act="sound" aria-pressed="${isEnabled()}" title="Sound on or off">${isEnabled() ? 'Sound on' : 'Sound off'}</button>`;
+
 function renderBar() {
-  if (!run) { bar.hidden = true; return; }
   bar.hidden = false;
+  if (!run) { bar.innerHTML = `<span class="brand">SpellCrafter</span><span class="spacer"></span>${soundButton()}`; return; }
   const depth = REGIONS.map((r, i) => `<li class="${i < run.regionIdx ? 'done' : i === run.regionIdx ? 'here' : ''}${i === REGIONS.length - 1 ? ' k-boss' : ''}" title="${r.name}"></li>`).join('');
   bar.innerHTML = `
     <span class="brand">SpellCrafter</span>
@@ -122,7 +134,8 @@ function renderBar() {
       <span class="stat gold" title="Gold">Gold <b>${run.gold}</b></span>
       <span class="stat deck" title="Cards in deck">Deck <b>${run.deck.length}</b></span>
       <span class="stat dread" title="Dread rises as you wander. Monsters find you more often.">Dread <b>${run.dread}</b></span>
-    </span>`;
+    </span>
+    ${soundButton()}`;
 }
 
 // ---------- title ----------
@@ -136,14 +149,40 @@ function renderTitle() {
     <p>You are an <strong>Inkbinder</strong>. What you write on a card becomes true, for as long as the card holds together.
     Ink is mixed from ash, silver, gold and blood. Cards are cut from paper, wood, stone and precious metal.
     Every spell you cast wears its page down.</p>
-    <p>Three floors down, beneath the chapel, the first book has woken. It wants a new hand to hold it.</p>
+    <p>${['One', 'Two', 'Three', 'Four', 'Five'][REGIONS.length - 1]} floors down, beneath the chapel, the first book has woken. It wants a new hand to hold it.</p>
     <ul class="howto">
       <li><b>Explore</b> by tapping a tile, or with WASD or the arrow keys. Your lantern only reaches so far.</li>
       <li><b>Scavenge</b> raw materials. The longer you wander, the more Dread builds, and the more often things find you.</li>
       <li><b>Mind your lantern.</b> Oil burns down slowly. Feed it a card, or climb back to the surface to refill it.</li>
       <li><b>Refine and craft</b> at writing desks. Monster parts become enchantments.</li>
     </ul>
-    <button class="primary" data-act="begin">Descend into the chapel</button>
+    <div class="title-actions">
+      <button class="primary" data-act="begin">Descend into the chapel</button>
+      <button data-act="codex">Your Grimoire (${meta.grimoire.length} of ${RECIPES.length})</button>
+    </div>
+    ${meta.runs ? `<p class="note">Runs: ${meta.runs} · Victories: ${meta.wins} · Deepest: ${meta.deepest >= 0 ? REGIONS[meta.deepest].name : 'none'}</p>` : ''}
+  </section>`;
+}
+
+function renderCodex() {
+  const known = new Set(meta.grimoire);
+  const rows = RECIPES.map(r => {
+    const card = craftCard({ colors: r.match.colors, inkMat: r.match.inkMat, cardMat: r.match.cardMat, enchants: r.match.enchants || [] });
+    if (!known.has(r.id)) return `<li class="unknown"><div class="card ghost"><span>?</span></div><div><b>Unknown spell</b><p><i>${r.hint}</i></p></div></li>`;
+    const how = `${r.match.colors.map(c => INK_COLORS[c].name).join(' + ')}, ${INK_MATERIALS[r.match.inkMat].name} ink, ${CARD_MATERIALS[r.match.cardMat].name} card${r.match.enchants ? `, ${r.match.enchants.map(e => ENCHANTMENTS[e].part).join(', ')}` : ''}`;
+    return `<li>${cardHtml(card)}<div><b>${r.name}</b><p>${how}</p></div></li>`;
+  }).join('');
+  app.innerHTML = `
+  <section class="codex">
+    <header class="screen-head">
+      <h2>Your Grimoire</h2>
+      <p>Every spell you discover is written here and stays known in every run after. ${meta.grimoire.length} of ${RECIPES.length} found.</p>
+    </header>
+    <ul class="codexlist">${rows}</ul>
+    <footer class="screen-foot">
+      <button class="danger" data-act="forget">${forgetArmed ? 'Tap again to erase your Grimoire and records' : 'Forget everything'}</button>
+      <button class="primary" data-act="restart">Back</button>
+    </footer>
   </section>`;
 }
 
@@ -248,6 +287,8 @@ function walkTick() {
 function moveBy(dx, dy) {
   const res = step(run.world, run, dx, dy);
   if (res.blocked) { walkPath = null; return; }
+  if (!res.object || !BLOCKING.has(res.object.type)) sfx('step');
+  if (res.encounter) sfx('encounter');
   standingOn = objectAt(run.world, run.world.px, run.world.py);
   if (res.object) { walkPath = null; interact(res.object); }
   else if (res.encounter) { walkPath = null; startFight(res.encounter, { kind: 'random' }); }
@@ -260,12 +301,17 @@ function interact(obj) {
     case 'node': {
       const r = scavenge(run, obj);
       logExplore(`You pick through the ${objectName(obj).toLowerCase()}: ${listItems(r.items)}.`);
+      view?.float(obj.x, obj.y, `+${r.items.length} ${itemName(r.items[0])}`, '#e0b95c');
+      sfx('pickup');
       standingOn = null;
       break;
     }
     case 'chest': {
       const r = openChest(run, obj);
       logExplore(`The reliquary opens: ${listItems(r.items)} and ${r.gold} gold.`);
+      r.items.forEach(id => view?.float(obj.x, obj.y, itemName(id), '#e0b95c'));
+      view?.float(obj.x, obj.y, `+${r.gold} gold`, '#f0d27a');
+      sfx('chest');
       standingOn = null;
       break;
     }
@@ -289,6 +335,11 @@ function interact(obj) {
       break;
     case 'up':
       logExplore('Far above, a square of grey daylight.');
+      break;
+    case 'event':
+      eventCtx = { obj, id: obj.event, result: null };
+      sfx('event');
+      screen = 'event';
       break;
   }
 }
@@ -554,6 +605,24 @@ function renderBurn() {
   </section>`;
 }
 
+function renderEvent() {
+  const ev = EVENTS[eventCtx.id];
+  const r = eventCtx.result;
+  const body = r
+    ? `<p class="result">${r.text}</p>
+       ${r.items?.length ? `<ul class="loots">${r.items.map(id => `<li class="loot r-${INGREDIENTS[id].rarity}">${itemName(id)}</li>`).join('')}</ul>` : ''}
+       ${r.learned ? `<p class="notice rare">${RECIPES.find(x => x.id === r.learned).name} is now written in your Grimoire, for this run and every run after.</p>` : ''}
+       <button class="primary" data-act="${r.fight ? 'eventFight' : 'toMap'}">${r.fight ? 'Face it' : 'Continue'}</button>`
+    : `<ul class="choices">${ev.options.map(o => `<li><button data-act="choose" data-opt="${o.id}"><b>${o.label}</b>${o.desc ? `<span>${o.desc}</span>` : ''}</button></li>`).join('')}</ul>`;
+  app.innerHTML = `
+  <section class="event center">
+    ${portrait(eventCtx.id, 'eventart')}
+    <h2>${ev.name}</h2>
+    <p class="lede">${ev.text}</p>
+    ${body}
+  </section>`;
+}
+
 function renderEnd(won) {
   app.innerHTML = `
   <section class="end center">
@@ -561,7 +630,7 @@ function renderEnd(won) {
     <p>${won
       ? 'The first book falls still in your hands. Its pages are blank now, waiting. You could write anything.'
       : `You fell in ${currentRegion(run).name}. Another Inkbinder will find your cards in the dust.`}</p>
-    <p class="note">Cards in deck: ${run.deck.length} · Spells discovered: ${run.grimoire.size} of ${RECIPES.length}</p>
+    <p class="note">Cards in deck: ${run.deck.length} · New spells this run: ${meta.grimoire.length - run.startKnown} · Grimoire: ${meta.grimoire.length} of ${RECIPES.length}</p>
     <button class="primary" data-act="restart">Begin a new run</button>
   </section>`;
 }
@@ -569,6 +638,8 @@ function renderEnd(won) {
 function render() {
   renderBar();
   if (screen !== 'explore' && view) { view.destroy(); view = null; }
+  const changed = screen !== lastScreen;
+  lastScreen = screen;
   switch (screen) {
     case 'title': renderTitle(); break;
     case 'explore':
@@ -582,7 +653,10 @@ function render() {
     case 'won': renderEnd(true); break;
     case 'lost': renderEnd(false); break;
     case 'burn': renderBurn(); break;
+    case 'event': renderEvent(); break;
+    case 'codex': renderCodex(); break;
   }
+  if (changed && screen !== 'explore') app.firstElementChild?.classList.add('enter');
 }
 
 // ---------- flow ----------
@@ -592,8 +666,8 @@ function afterCombatAction() {
     if (combat.enemies[target]?.hp <= 0) target = combat.enemies.findIndex(e => e.hp > 0);
     return;
   }
-  if (combat.over === 'lost') { screen = 'lost'; return; }
-  if (fightCtx.kind === 'boss') { screen = 'won'; return; }
+  if (combat.over === 'lost') { endRun(false); return; }
+  if (fightCtx.kind === 'boss') { endRun(true); return; }
   if (fightCtx.obj) fightCtx.obj.gone = true;
   rewards = rollRewards(fightCtx.enemies, { elite: fightCtx.kind === 'elite' });
   rewards.salvaged = combat.salvaged;
@@ -602,30 +676,71 @@ function afterCombatAction() {
   screen = 'rewards';
 }
 
+function endRun(won) {
+  recordRun(meta, { won, depth: run.regionIdx });
+  stopAmbient();
+  sfx(won ? 'win' : 'lose');
+  screen = won ? 'won' : 'lost';
+}
+
+function noteDiscovery(r) {
+  if (r.discovered) { learn(meta, r.card.recipeId); sfx('discover'); }
+  else if (!r.error) sfx('craft');
+}
+
 const actions = {
   begin() {
-    run = createRun();
+    run = createRun(undefined, meta.grimoire);
+    run.startKnown = meta.grimoire.length;
+    startAmbient(0);
+    sfx('descend');
     exploreLog = ['You light your lantern at the top of the stair. Tap a tile to walk there, or use WASD or the arrow keys.'];
     standingOn = objectAt(run.world, run.world.px, run.world.py);
     screen = 'explore';
   },
-  restart() { run = null; screen = 'title'; },
+  restart() { run = null; forgetArmed = false; stopAmbient(); screen = 'title'; },
+  codex() { forgetArmed = false; screen = 'codex'; },
+  forget() {
+    if (!forgetArmed) { forgetArmed = true; return; }
+    meta = forget();
+    forgetArmed = false;
+  },
+  sound() {
+    setEnabled(!isEnabled());
+    saveSoundPref(isEnabled());
+    if (isEnabled()) { unlock(); if (run && !['won', 'lost'].includes(screen)) startAmbient(run.regionIdx); }
+    else stopAmbient();
+  },
+  choose({ opt }) {
+    const r = resolveEvent(run, eventCtx.id, opt);
+    eventCtx.result = r;
+    eventCtx.obj.gone = true;
+    standingOn = null;
+    if (r.learned) { learn(meta, r.learned); sfx('discover'); }
+    else if (r.items?.length) sfx('pickup');
+    logExplore(`${EVENTS[eventCtx.id].name}: ${r.text}`);
+  },
+  eventFight() { sfx('encounter'); startFight(eventCtx.result.fight, { kind: 'random' }); },
   toMap() { notice = null; screen = 'explore'; },
   openBurn() { walkPath = null; notice = null; screen = 'burn'; },
   burn({ uid }) {
     const r = burnCard(run, uid);
     if (r.error) { notice = { text: r.error, tone: 'warn' }; return; }
     notice = { text: `${r.card.name} curls into the flame. +${r.oil} oil.` };
+    sfx('burn');
     logExplore(`You burn ${r.card.name}. The light swells.`);
   },
   resurface() {
     const r = resurface(run);
     if (r.error) { logExplore(r.error); return; }
     walkPath = null;
+    sfx('descend');
     logExplore(`You climb to the surface and refill your lantern. The climb back down frays your nerves (+${r.dread} Dread).`);
   },
   descend() {
     const r = descend(run);
+    sfx('descend');
+    startAmbient(run.regionIdx);
     standingOn = objectAt(run.world, run.world.px, run.world.py);
     exploreLog = [`You catch your breath on the long stair and recover ${r.heal} HP.`];
     screen = 'explore';
@@ -634,9 +749,11 @@ const actions = {
   rest() {
     const r = rest(run, desk);
     notice = r.error ? { text: r.error, tone: 'warn' } : { text: `You rest by the candle and recover ${r.heal} HP. The dread eases.` };
+    if (!r.error) sfx('heal');
   },
   refine({ id }) {
     const r = refine(run, id);
+    if (!r.error) sfx(id === 'bleed' ? 'hurt' : 'pickup');
     notice = r.error ? { text: r.error, tone: 'warn' }
       : { text: `Refined into ${Object.entries(r.made).map(([k, n]) => `${itemName(k)}${n > 1 ? ` ×${n}` : ''}`).join(', ')}.` };
   },
@@ -662,6 +779,7 @@ const actions = {
   craft() {
     const r = craftIntoDeck(run, blueprint);
     if (r.error) { notice = { text: r.error, tone: 'warn' }; return; }
+    noteDiscovery(r);
     notice = r.discovered
       ? { text: `A true name surfaces: you discovered ${r.card.name}. It is written in your Grimoire.`, tone: 'rare' }
       : { text: `${r.card.name} added to your deck.` };
@@ -669,12 +787,14 @@ const actions = {
   },
   reinscribe({ uid, ench }) {
     const r = reinscribe(run, uid, ench);
+    if (!r.error) noteDiscovery(r);
     notice = r.error ? { text: r.error, tone: 'warn' }
       : r.discovered ? { text: `The card shifts under your pen. You discovered ${r.card.name}.`, tone: 'rare' }
       : { text: `${r.card.name} now carries ${ENCHANTMENTS[ench].name}.` };
   },
   mend({ uid }) {
     const r = mend(run, uid);
+    if (!r.error) sfx('craft');
     notice = r.error ? { text: r.error, tone: 'warn' } : { text: `${r.card.name} is whole again.` };
   },
   toggleSalvage() { salvageMode = !salvageMode; notice = null; },
@@ -695,6 +815,7 @@ const actions = {
     run.gold -= s.price;
     run.inventory[s.id] = (run.inventory[s.id] || 0) + 1;
     s.sold = true;
+    sfx('pickup');
     notice = { text: `Bought ${itemName(s.id)}.` };
   },
   repair({ uid }) {
@@ -706,13 +827,86 @@ const actions = {
   },
 };
 
+// ---------- combat effects ----------
+
+function snapshot() {
+  return {
+    enemies: combat.enemies.map(e => ({ hp: e.hp })),
+    hp: run.hp, block: combat.player.block,
+  };
+}
+
+function floatAt(el, text, cls) {
+  if (!el) return;
+  const f = document.createElement('span');
+  f.className = `fx-float ${cls}`;
+  f.textContent = text;
+  el.appendChild(f);
+  f.addEventListener('animationend', () => f.remove());
+  setTimeout(() => f.remove(), 1500);
+}
+
+function flyCard(clone, rect) {
+  if (!clone || !rect) return;
+  clone.classList.add('fly');
+  clone.removeAttribute('data-act');
+  clone.inert = true;
+  clone.setAttribute('aria-hidden', 'true');
+  Object.assign(clone.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` });
+  document.body.appendChild(clone);
+  clone.addEventListener('animationend', () => clone.remove());
+  setTimeout(() => clone.remove(), 800);
+}
+
+function combatFx(before) {
+  const enemyEls = app.querySelectorAll('.enemy');
+  let hit = false, killed = false;
+  combat.enemies.forEach((e, i) => {
+    const d = before.enemies[i].hp - Math.max(0, e.hp);
+    if (d > 0) {
+      hit = true;
+      enemyEls[i]?.classList.add('hit');
+      floatAt(enemyEls[i], `-${d}`, 'dmg');
+      if (e.hp <= 0) { killed = true; enemyEls[i]?.classList.add('dying'); }
+    }
+  });
+  const playerEl = app.querySelector('.player') || app.querySelector('section');
+  const dhp = run.hp - before.hp;
+  if (dhp < 0) {
+    sfx('hurt');
+    floatAt(playerEl, `${dhp}`, 'dmg');
+    const v = document.createElement('div');
+    v.className = 'hurt-vignette';
+    document.body.appendChild(v);
+    setTimeout(() => v.remove(), 600);
+  } else if (dhp > 0) {
+    sfx('heal');
+    floatAt(playerEl, `+${dhp}`, 'heal');
+  }
+  if (combat.player.block > before.block && screen === 'fight') {
+    sfx('block');
+    floatAt(playerEl, `+${combat.player.block - before.block} Block`, 'blk');
+  }
+  if (killed) sfx('kill'); else if (hit) sfx('hit');
+}
+
 document.addEventListener('click', e => {
+  unlock();
   const el = e.target.closest('[data-act]');
   if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true') return;
-  const fn = actions[el.dataset.act];
+  const act = el.dataset.act;
+  const fn = actions[act];
   if (!fn) return;
+  const inFight = screen === 'fight' && (act === 'play' || act === 'endTurn');
+  const before = inFight ? snapshot() : null;
+  const clone = act === 'play' ? el.cloneNode(true) : null;
+  const rect = act === 'play' ? el.getBoundingClientRect() : null;
   fn({ ...el.dataset });
   render();
+  if (inFight) {
+    if (act === 'play') { sfx('cast'); flyCard(clone, rect); }
+    combatFx(before);
+  }
 });
 
 const KEYS = {
@@ -721,8 +915,14 @@ const KEYS = {
 };
 
 document.addEventListener('keydown', e => {
+  unlock();
   if (e.target.closest('input,textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
-  if (screen === 'fight' && (e.key === 'e' || e.key === 'E')) { actions.endTurn(); render(); return; }
+  if (screen === 'fight' && (e.key === 'e' || e.key === 'E')) {
+    const before = snapshot();
+    actions.endTurn(); render();
+    if (screen === 'fight') combatFx(before);
+    return;
+  }
   if (screen === 'explore' && KEYS[e.key]) {
     e.preventDefault();
     const now = performance.now();
