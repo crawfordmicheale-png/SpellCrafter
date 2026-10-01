@@ -1,11 +1,11 @@
-import { EVENTS, ENCHANTMENTS, INK_COLORS, RECIPES, REGIONS, LANTERN } from './data.js';
+import { EVENTS, ENCHANTMENTS, INK_COLORS, RECIPES, REGIONS, LANTERN, CORRUPTION } from './data.js';
 import { lightRadius, reveal } from './world.js';
 
 const pick = (arr, rng) => arr[Math.floor(rng() * arr.length)];
 
 function addOil(run, n) {
   const before = run.oil;
-  run.oil = Math.min(LANTERN.max, run.oil + n);
+  run.oil = Math.min(run.oilMax ?? LANTERN.max, run.oil + n);
   run.world.radius = lightRadius(run.oil);
   reveal(run.world);
   return run.oil - before;
@@ -21,7 +21,9 @@ export function resolveEvent(run, eventId, optionId, rng = Math.random) {
       const before = run.hp;
       run.hp = Math.min(run.maxHp, run.hp + 12);
       run.dread += 10;
-      return { text: `The candles gutter as you kneel. You recover ${run.hp - before} HP, but the silence afterwards is heavy.` };
+      const cleansed = Math.min(run.corruption || 0, CORRUPTION.prayCleanse);
+      run.corruption = (run.corruption || 0) - cleansed;
+      return { text: `The candles gutter as you kneel. You recover ${run.hp - before} HP${cleansed ? ` and ${cleansed} Corruption lifts from you` : ''}, but the silence afterwards is heavy.` };
     }
     case 'shrine:take': {
       const oil = addOil(run, 30);

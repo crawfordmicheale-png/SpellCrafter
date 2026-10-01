@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { craftCard, validateBlueprint, findRecipe } from '../js/crafting.js';
 import { createCombat, playCard, endTurn } from '../js/combat.js';
-import { createRun, craftIntoDeck, salvageCard, refine, reinscribe, mend, descend, burnCard, resurface, gainRelic as gainRelicFor, applyRewards, serializeRun, deserializeRun } from '../js/run.js';
+import { createRun, craftIntoDeck, salvageCard, refine, reinscribe, mend, descend, burnCard, resurface, rest, gainRelic as gainRelicFor, applyRewards, serializeRun, deserializeRun } from '../js/run.js';
 import { generateRegion, findPath, step, isFloor, objectAt, lightRadius } from '../js/world.js';
 import { RECIPES, REGIONS } from '../js/data.js';
 
@@ -89,7 +89,8 @@ test('every recipe is craftable', () => {
   for (const r of RECIPES) {
     const bp = { colors: r.match.colors, inkMat: r.match.inkMat, cardMat: r.match.cardMat, enchants: r.match.enchants || [] };
     assert.equal(validateBlueprint(bp), null, r.id);
-    assert.equal(craftCard(bp).recipeId, r.id);
+    assert.equal(craftCard(bp, { corruption: 99 }).recipeId, r.id);
+    if (r.forbidden) assert.equal(craftCard(bp).recipeId, null, `${r.id} needs Corruption`);
   }
 });
 
@@ -374,4 +375,94 @@ test('a run survives saving and loading', () => {
   Object.assign(back.inventory, { color_red: 1, mat_paper: 1, ink_charcoal: 1 });
   const { card } = craftIntoDeck(back, { colors: ['red'], inkMat: 'charcoal', cardMat: 'paper' });
   assert.ok(!back.deck.slice(0, -1).some(k => k.uid === card.uid));
+});
+
+test('Inkbinder variants start differently and unlock from progress', async () => {
+  const { isUnlocked, oilMax } = await import('../js/run.js');
+  const blood = createRun(3, [], 'bloodscribe');
+  assert.equal(blood.maxHp, 70);
+  assert.equal(blood.inventory.ink_blood, 2);
+  assert.deepEqual(blood.relics, ['inkwell']);
+  assert.equal(blood.corruption, 2);
+  const heretic = createRun(3, [], 'heretic');
+  assert.equal(heretic.gold, 120);
+  assert.equal(oilMax(heretic), 70);
+  heretic.oil = 60;
+  assert.equal(resurface(heretic).dread, 30);
+  assert.equal(heretic.oil, 70);
+  const monk = createRun(3, [], 'ashmonk');
+  const c = createCombat(monk, ['grimoire'], seq(0.99));
+  assert.equal(c.player.block, 4);
+  assert.ok(isUnlocked({ deepest: -1, grimoire: [] }, 'inkbinder'));
+  assert.ok(!isUnlocked({ deepest: 0, grimoire: [] }, 'bloodscribe'));
+  assert.ok(isUnlocked({ deepest: 1, grimoire: [] }, 'bloodscribe'));
+  assert.ok(isUnlocked({ deepest: -1, grimoire: ['a', 'b', 'c'] }, 'ashmonk'));
+  assert.ok(!isUnlocked({ deepest: 1, grimoire: [] }, 'heretic'));
+});
+
+test('crafted cards become Well-Worn and keep it when re-inscribed', () => {
+  const run = createRun(6);
+  Object.assign(run.inventory, { color_red: 1, mat_silver: 1, ink_charcoal: 1, ench_echo: 1 });
+  const { card } = craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'silver' });
+  const base = card.effects[0].amount;
+  const c = createCombat(run, ['grimoire'], seq(0.99));
+  for (let i = 0; i < 8; i++) { c.player.energy = 9; c.hand.push(card); playCard(c, card.uid); }
+  assert.equal(card.wear, 1);
+  assert.equal(card.effects[0].amount, base + 1);
+  assert.match(c.log.join(' '), /Well-Worn/);
+  reinscribe(run, card.uid, 'echo');
+  assert.equal(card.effects[0].amount, base + 1);
+  assert.equal(card.casts, 8);
+});
+
+test('pristine spots and essence make stronger cards', async () => {
+  const { scavenge } = await import('../js/run.js');
+  const run = createRun(6);
+  const node = { raw: 'bone', amount: 1, pristine: true };
+  const r = scavenge(run, node);
+  assert.equal(run.inventory.raw_bone, 3);
+  assert.equal(run.inventory.ess_pristine, 1);
+  assert.ok(r.pristine);
+  Object.assign(run.inventory, { color_red: 1, mat_wood: 1 });
+  const { card } = craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'wood', pristine: true });
+  assert.equal(card.name, 'Pristine Ashen Flame');
+  assert.equal(card.effects[0].amount, 7); // 5 x 1.3 = 6.5, rounded
+  assert.equal(run.inventory.ess_pristine, undefined);
+  let pristineSpots = 0;
+  for (let seed = 1; seed <= 20; seed++) pristineSpots += generateRegion(0, seed).objects.filter(o => o.pristine).length;
+  assert.ok(pristineSpots > 5);
+});
+
+test('corruption builds from blood and ichor, and changes the rules', () => {
+  const run = createRun(8);
+  Object.assign(run.inventory, { color_red: 1, color_black: 2, mat_wood: 2, mat_stone: 1, ink_blood: 2, ink_ichor: 1 });
+  craftIntoDeck(run, { colors: ['red'], inkMat: 'blood', cardMat: 'wood' });
+  assert.equal(run.corruption, 2);
+  const { card: ichor } = craftIntoDeck(run, { colors: ['black'], inkMat: 'ichor', cardMat: 'wood' });
+  const c1 = createCombat(run, ['grimoire'], seq(0.99));
+  c1.hand.push(ichor); playCard(c1, ichor.uid);
+  assert.equal(run.corruption, 3);
+  assert.equal(c1.player.weak, 0);
+  run.corruption = 5; // Tainted
+  const c2 = createCombat(run, ['grimoire'], seq(0.99));
+  assert.equal(c2.player.weak, 1);
+  const poison = c2.enemies[0].poison;
+  c2.player.energy = 9; c2.hand.push(ichor); playCard(c2, ichor.uid);
+  assert.equal(c2.enemies[0].poison - poison, Math.round(3 * 1.75) + 2);
+  run.corruption = 10; // Forsaken
+  const c3 = createCombat(run, ['grimoire'], seq(0.99));
+  assert.equal(c3.enemies[0].strength, 1);
+  const { card: unwriting } = craftIntoDeck(run, { colors: ['black'], inkMat: 'blood', cardMat: 'stone' });
+  assert.equal(unwriting.name, 'The Unwriting');
+  run.corruption = 4;
+  rest(run, {});
+  assert.equal(run.corruption, 2 + 0); // rest cleanses 2 (after the blood craft added 2)
+});
+
+test('ghostlight ink costs one less', () => {
+  const k = craftCard({ colors: ['red'], inkMat: 'ghostlight', cardMat: 'wood' });
+  assert.equal(k.cost, 0);
+  assert.equal(k.name, 'Ghostlit Flame');
+  const g = craftCard({ colors: ['red'], inkMat: 'ghostlight', cardMat: 'paper' });
+  assert.equal(g.cost, 0);
 });

@@ -1,5 +1,5 @@
-import { ENEMIES, REACTIONS } from './data.js';
-import { salvageRoll } from './crafting.js';
+import { ENEMIES, REACTIONS, CORRUPTION } from './data.js';
+import { salvageRoll, recordCast, GROWS } from './crafting.js';
 
 export function shuffle(arr, rng = Math.random) {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -32,11 +32,18 @@ export function createCombat(run, enemyKeys, rng = Math.random, { hpMult = 1 } =
     over: null, // 'won' | 'lost'
   };
   log(c, `${c.enemies.map(e => e.name).join(' and ')} ${c.enemies.length > 1 ? 'block' : 'blocks'} your path.`);
+  const corruption = run.corruption || 0;
+  if (corruption >= CORRUPTION.forsaken) {
+    for (const e of c.enemies) e.strength += 1;
+    log(c, 'You are Forsaken. Your enemies can smell it.');
+  }
   if (hasRelic(run, 'bell')) {
     for (const e of c.enemies) e.weak = 1;
     log(c, 'The Tolling Bell rings. Your enemies falter.');
   }
   startPlayerTurn(c);
+  if (corruption >= CORRUPTION.tainted) c.player.weak += 1;
+  if (run.perks?.includes('openingBlock')) c.player.block += 4;
   return c;
 }
 
@@ -59,7 +66,6 @@ export function reactionFor(prevColors, colors) {
 export const previewReaction = (c, card) => card.crafted ? reactionFor(c.lastColors, card.colors) : null;
 
 export const bloodCost = (c, card) => Math.max(0, (card.hpCost || 0) - (hasRelic(c.run, 'inkwell') ? 1 : 0));
-const GROWS = new Set(['damage', 'damageAll', 'block', 'heal', 'poison']);
 const alive = c => c.enemies.filter(e => e.hp > 0);
 
 export function currentMove(enemy) {
@@ -160,7 +166,10 @@ export function playCard(c, cardUid, targetIdx = 0) {
   const needle = c.needleReady && card.effects.some(e => e.type === 'damage' || e.type === 'damageAll');
   if (needle) c.needleReady = false;
   const pierce = card.enchants.includes('piercing') || needle;
-  const growth = card.enchants.includes('hungering') ? 2 * (c.hunger[card.uid] || 0) : 0;
+  const tainted = (c.run.corruption || 0) >= CORRUPTION.tainted
+    && (card.colors.includes('black') || card.inkMat === 'blood');
+  const growth = (card.enchants.includes('hungering') ? 2 * (c.hunger[card.uid] || 0) : 0)
+    + (tainted ? CORRUPTION.taintBonus : 0);
   const apply = (scale) => {
     for (const e of card.effects) {
       const base = e.amount + (GROWS.has(e.type) ? growth : 0);
@@ -211,6 +220,9 @@ export function playCard(c, cardUid, targetIdx = 0) {
     else if (c.player.weak > 0) c.player.weak = 0;
   }
   if (card.goldOnCast) c.run.gold += card.goldOnCast;
+  if (card.corrupts) c.run.corruption = (c.run.corruption || 0) + card.corrupts;
+  const tier = recordCast(card);
+  if (tier) { log(c, `${card.name} is now ${tier}.`); c.wornUp = { name: card.name, tier, n: (c.wornUp?.n || 0) + 1 }; }
 
   // Ink reactions. Only inscribed cards react; starter cards are plain ink.
   const reactKey = card.crafted ? reactionFor(c.lastColors, card.colors) : null;

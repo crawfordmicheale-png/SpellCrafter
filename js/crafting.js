@@ -1,6 +1,6 @@
 import {
   INK_COLORS, INK_MATERIALS, CARD_MATERIALS, ENCHANTMENTS, HYBRID_FACTOR, HYBRID_NOUNS,
-  RECIPES, STARTER_CARDS,
+  RECIPES, STARTER_CARDS, CORRUPTION, PRISTINE, WEAR,
 } from './data.js';
 
 let nextUid = 1;
@@ -11,8 +11,10 @@ export function ensureUidAbove(n) { nextUid = Math.max(nextUid, n + 1); }
 
 const sameSet = (a = [], b = []) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
 
-export function findRecipe({ colors, inkMat, cardMat, enchants = [] }) {
+// Forbidden recipes only answer to an Inkbinder who is Forsaken.
+export function findRecipe({ colors, inkMat, cardMat, enchants = [] }, corruption = 0) {
   return RECIPES.find(r =>
+    (!r.forbidden || corruption >= CORRUPTION.forsaken) &&
     sameSet(r.match.colors, colors) &&
     r.match.inkMat === inkMat &&
     r.match.cardMat === cardMat &&
@@ -47,17 +49,18 @@ export function blueprintIngredients(bp) {
     ...bp.colors.map(c => `color_${c}`),
     `ink_${bp.inkMat}`,
     ...(bp.enchants || []).map(e => `ench_${e}`),
+    ...(bp.pristine ? ['ess_pristine'] : []),
   ];
 }
 
 // Builds a card from a blueprint. Does not touch inventory.
-export function craftCard(bp) {
+export function craftCard(bp, { corruption = 0 } = {}) {
   const err = validateBlueprint(bp);
   if (err) throw new Error(err);
   const enchants = [...(bp.enchants || [])];
   const ink = INK_MATERIALS[bp.inkMat];
   const mat = CARD_MATERIALS[bp.cardMat];
-  const recipe = findRecipe({ ...bp, enchants });
+  const recipe = findRecipe({ ...bp, enchants }, corruption);
 
   let effects, name;
   if (recipe) {
@@ -74,6 +77,10 @@ export function craftCard(bp) {
     const noun = hybrid ? HYBRID_NOUNS[[...bp.colors].sort().join('+')] : INK_COLORS[bp.colors[0]].noun;
     name = `${ink.adj} ${noun}`;
   }
+  if (bp.pristine) {
+    for (const e of effects) if (GROWS.has(e.type) || e.type === 'draw') e.amount = Math.max(1, Math.round(e.amount * (e.type === 'draw' ? 1 : PRISTINE.mult)));
+    name = `Pristine ${name}`;
+  }
 
   const unbreakable = !!recipe?.unbreakable;
   const durability = unbreakable ? Infinity : mat.durability;
@@ -87,8 +94,12 @@ export function craftCard(bp) {
     inkMat: bp.inkMat,
     cardMat: bp.cardMat,
     enchants,
-    cost: mat.cost + ink.extraCost,
+    cost: Math.max(0, mat.cost + ink.extraCost),
     hpCost: ink.hpCost,
+    corrupts: ink.corrupts || 0,
+    pristine: !!bp.pristine,
+    casts: 0,
+    wear: 0,
     purify: !!ink.purify,
     goldOnCast: mat.goldOnCast || 0,
     effects,
@@ -96,6 +107,28 @@ export function craftCard(bp) {
     maxDurability: durability,
   };
 }
+
+// Effects that grow with Hungering, wear and Corruption.
+export const GROWS = new Set(['damage', 'damageAll', 'block', 'heal', 'poison']);
+
+// Counts a cast. Returns the name of a newly reached wear tier, if any.
+export function recordCast(card) {
+  if (!card.crafted) return null;
+  card.casts = (card.casts || 0) + 1;
+  const tier = WEAR.filter(w => card.casts >= w.casts).length;
+  if (tier <= (card.wear || 0)) return null;
+  applyWear(card, card.wear || 0, tier);
+  card.wear = tier;
+  return WEAR[tier - 1].name;
+}
+
+// Adds the bonuses of wear tiers in (from, to] to a card's effects.
+export function applyWear(card, from, to) {
+  const bonus = WEAR.slice(from, to).reduce((sum, w) => sum + w.bonus, 0);
+  if (bonus) for (const e of card.effects) if (GROWS.has(e.type)) e.amount += bonus;
+}
+
+export const wearName = card => (card.wear ? WEAR[card.wear - 1].name : null);
 
 export function makeStarterCard(key) {
   const s = STARTER_CARDS[key];

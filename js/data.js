@@ -53,6 +53,9 @@ export const INK_MATERIALS = {
   silver:   { name: 'Silver',   adj: 'Silvered', mult: 1.0,  extraCost: 0, hpCost: 0, purify: true, desc: 'x1 power. Removes 1 debuff from you.' },
   gold:     { name: 'Gold',     adj: 'Gilded',   mult: 1.5,  extraCost: 1, hpCost: 0, desc: 'x1.5 power. +1 cost.' },
   blood:    { name: 'Blood',    adj: 'Sanguine', mult: 2.0,  extraCost: 0, hpCost: 3, desc: 'x2 power. Costs 3 HP to cast.' },
+  // Rare inks, refined from what elites and wraiths leave behind.
+  ichor:      { name: 'Ichor',      adj: 'Ichorous', mult: 1.75, extraCost: 0,  hpCost: 0, corrupts: 1, desc: 'x1.75 power. +1 Corruption each cast.' },
+  ghostlight: { name: 'Ghostlight', adj: 'Ghostlit', mult: 1.0,  extraCost: -1, hpCost: 0, desc: 'x1 power. Costs 1 less.' },
 };
 
 // durability: uses across the whole run (Infinity = permanent)
@@ -90,6 +93,8 @@ export const RAW_MATERIALS = {
   silver:    { name: 'Silver Ore',   node: 'Silver vein',       color: '#c9ced6', rarity: 'uncommon' },
   gold:      { name: 'Gold Leaf',    node: 'Gilded tomes',      color: '#d7ad52', rarity: 'rare' },
   heart:     { name: 'Heartblood',   node: null,                color: '#8d1f1a', rarity: 'rare' },
+  ichor:     { name: 'Ichor',        node: null,                color: '#7a8a2a', rarity: 'rare' },
+  wisp:      { name: 'Ghostlight Wisp', node: null,             color: '#9fd8e0', rarity: 'uncommon' },
 };
 
 // Refining turns raw materials into crafting ingredients. Some raws have a choice.
@@ -108,16 +113,37 @@ export const REFINING = [
   { id: 'goldInk',    from: { raw_gold: 1 },      to: { ink_gold: 1 } },
   { id: 'goldCard',   from: { raw_gold: 2 },      to: { mat_gold: 1 } },
   { id: 'bloodInk',   from: { raw_heart: 1 },     to: { ink_blood: 2 } },
+  { id: 'ichorInk',   from: { raw_ichor: 1 },     to: { ink_ichor: 1 } },
+  { id: 'ghostInk',   from: { raw_wisp: 1 },      to: { ink_ghostlight: 1 } },
   { id: 'bleed',      from: {}, hpCost: 6,        to: { ink_blood: 1 } },
 ];
 
 // Every ingredient in the game, keyed by inventory id.
 export const INGREDIENTS = {};
 for (const [k, v] of Object.entries(INK_COLORS))     INGREDIENTS[`color_${k}`] = { kind: 'color',   key: k, name: v.name, rarity: 'common' };
-for (const [k, v] of Object.entries(INK_MATERIALS))  INGREDIENTS[`ink_${k}`]   = { kind: 'inkMat',  key: k, name: `${v.name} Ink`, rarity: { charcoal: 'common', silver: 'uncommon', gold: 'rare', blood: 'rare' }[k] };
+for (const [k, v] of Object.entries(INK_MATERIALS))  INGREDIENTS[`ink_${k}`]   = { kind: 'inkMat',  key: k, name: `${v.name} Ink`, rarity: { charcoal: 'common', silver: 'uncommon', gold: 'rare', blood: 'rare', ichor: 'rare', ghostlight: 'uncommon' }[k] };
 for (const [k, v] of Object.entries(CARD_MATERIALS)) INGREDIENTS[`mat_${k}`]   = { kind: 'cardMat', key: k, name: `${v.name} Card`, rarity: { paper: 'common', wood: 'common', stone: 'uncommon', silver: 'uncommon', gold: 'rare' }[k] };
 for (const [k, v] of Object.entries(ENCHANTMENTS))   INGREDIENTS[`ench_${k}`]  = { kind: 'enchant', key: k, name: v.part, rarity: 'uncommon' };
 for (const [k, v] of Object.entries(RAW_MATERIALS))  INGREDIENTS[`raw_${k}`]   = { kind: 'raw',     key: k, name: v.name, rarity: v.rarity };
+
+INGREDIENTS.ess_pristine = { kind: 'essence', key: 'pristine', name: 'Pristine Essence', rarity: 'rare' };
+
+// Glinting scavenge spots give double materials and a Pristine Essence.
+// Add the essence when inscribing for a stronger, Pristine card.
+export const PRISTINE = { chance: 0.12, mult: 1.3 };
+
+// Cards grow as you use them. Bonuses stack and apply to damage, Block, healing and Poison.
+export const WEAR = [
+  { casts: 8,  bonus: 1, name: 'Well-Worn' },
+  { casts: 20, bonus: 2, name: 'Heirloom' },
+];
+
+// Corruption builds from blood and ichor. Tainted: Black and Blood cards hit harder,
+// but you start fights Weak. Forsaken: forbidden recipes open, but enemies grow stronger.
+export const CORRUPTION = {
+  tainted: 5, forsaken: 10, taintBonus: 2,
+  craftBlood: 2, bleed: 1, restCleanse: 2, prayCleanse: 3,
+};
 
 export const PRICES = { common: 12, uncommon: 25, rare: 45 };
 export const REPAIR_PRICE = 20;
@@ -198,6 +224,20 @@ export const RECIPES = [
     flavor: 'Sung underwater, it sounds like breathing.',
   },
   {
+    id: 'unwriting', name: 'The Unwriting', forbidden: true,
+    match: { colors: ['black'], inkMat: 'blood', cardMat: 'stone' },
+    effects: [{ type: 'damage', amount: 30 }, { type: 'loseMaxHp', amount: 3 }],
+    hint: 'Forbidden. Grave ink and blood, carved in stone.',
+    flavor: 'It does not kill. It removes the word for them.',
+  },
+  {
+    id: 'hollowcrown', name: 'The Hollow Crown', forbidden: true,
+    match: { colors: ['black', 'white'], inkMat: 'ichor', cardMat: 'gold' },
+    effects: [{ type: 'damageAll', amount: 12 }, { type: 'block', amount: 8 }],
+    hint: 'Forbidden. A shroud in ichor on a golden page.',
+    flavor: 'Every Inkbinder who wore it heard the same voice.',
+  },
+  {
     id: 'emberrite', name: 'Ember Rite',
     match: { colors: ['red'], inkMat: 'gold', cardMat: 'gold' },
     effects: [{ type: 'damageAll', amount: 9 }],
@@ -272,7 +312,7 @@ export const ENEMIES = {
       { actions: [{ type: 'attack', amount: 5 }, { type: 'debuff', status: 'weak', amount: 1 }] },
       { actions: [{ type: 'attack', amount: 7 }] },
     ],
-    drops: ['raw_kelp', 'raw_kelp', 'raw_silver', 'ench_bound', 'raw_rags'],
+    drops: ['raw_kelp', 'raw_kelp', 'raw_silver', 'ench_bound', 'raw_rags', 'raw_wisp'],
   },
   warden: {
     name: 'The Bell Warden', hp: 42, elite: true,
@@ -282,7 +322,7 @@ export const ENEMIES = {
       { actions: [{ type: 'block', amount: 8 }, { type: 'debuff', status: 'weak', amount: 1 }] },
       { actions: [{ type: 'attack', amount: 3, times: 3 }] },
     ],
-    drops: ['ench_echo', 'raw_silver', 'raw_silver', 'raw_heart', 'raw_slate', 'raw_gold'],
+    drops: ['ench_echo', 'raw_silver', 'raw_silver', 'raw_heart', 'raw_slate', 'raw_gold', 'raw_ichor'],
   },
   scrivener: {
     name: 'The Pale Scrivener', hp: 52, elite: true,
@@ -292,7 +332,7 @@ export const ENEMIES = {
       { actions: [{ type: 'block', amount: 10 }, { type: 'debuff', status: 'weak', amount: 2 }] },
       { actions: [{ type: 'attack', amount: 5, times: 3 }] },
     ],
-    drops: ['ench_bound', 'raw_gold', 'raw_gold', 'raw_heart', 'raw_silver'],
+    drops: ['ench_bound', 'raw_gold', 'raw_gold', 'raw_heart', 'raw_silver', 'raw_ichor'],
   },
   wraith: {
     name: 'Choir Wraith', hp: 20,
@@ -301,7 +341,7 @@ export const ENEMIES = {
       { actions: [{ type: 'debuff', status: 'weak', amount: 2 }, { type: 'attack', amount: 3 }] },
       { actions: [{ type: 'attack', amount: 7 }] },
     ],
-    drops: ['raw_bone', 'raw_ash', 'ench_echo', 'raw_silver'],
+    drops: ['raw_bone', 'raw_ash', 'ench_echo', 'raw_silver', 'raw_wisp', 'raw_wisp'],
   },
   boneweaver: {
     name: 'Bone Weaver', hp: 26,
@@ -329,7 +369,7 @@ export const ENEMIES = {
       { actions: [{ type: 'block', amount: 12 }, { type: 'buff', status: 'strength', amount: 2 }] },
       { actions: [{ type: 'debuff', status: 'weak', amount: 2 }, { type: 'debuff', status: 'poison', amount: 3 }] },
     ],
-    drops: ['ench_hallowed', 'ench_hallowed', 'raw_silver', 'raw_gold', 'raw_heart'],
+    drops: ['ench_hallowed', 'ench_hallowed', 'raw_silver', 'raw_gold', 'raw_heart', 'raw_ichor', 'raw_ichor'],
   },
   grimoire: {
     name: 'The Unbound Grimoire', hp: 110, boss: true,
@@ -438,5 +478,33 @@ export const EVENTS = {
       { id: 'climb', label: 'Climb for the oil', desc: '+25 lantern oil. Lose 6 HP.' },
       { id: 'leave', label: 'Leave them', desc: '' },
     ],
+  },
+};
+
+// Playable Inkbinders. Each starts differently and unlocks through lifetime progress.
+// `start` adds to (inventory) or replaces (other fields) the normal starting values.
+export const VARIANTS = {
+  inkbinder: {
+    name: 'The Inkbinder', swap: null,
+    desc: 'Balanced. The way the old scribes taught it.',
+    unlock: null, start: {},
+  },
+  bloodscribe: {
+    name: 'The Bloodscribe', swap: 'blood',
+    desc: 'Starts with 2 Blood Ink, the Cracked Inkwell and 70 max HP. Already a little corrupted.',
+    unlock: { type: 'deepest', value: 1, text: 'Reach the Drowned Archive' },
+    start: { maxHp: 70, hp: 70, relics: ['inkwell'], inventory: { ink_blood: 2 }, corruption: 2 },
+  },
+  ashmonk: {
+    name: 'The Ash Monk', swap: 'ash',
+    desc: 'Starts with extra charcoal and wood and begins every fight with 4 Block. Carries little gold.',
+    unlock: { type: 'grimoire', value: 3, text: 'Know 3 spells in your Grimoire' },
+    start: { gold: 10, inventory: { ink_charcoal: 3, mat_wood: 2, raw_ash: 2 }, perks: ['openingBlock'] },
+  },
+  heretic: {
+    name: 'The Gilded Heretic', swap: 'gilt',
+    desc: 'Starts with 120 gold, a Gold Card and Gold Ink, but carries a smaller lantern (70 oil).',
+    unlock: { type: 'deepest', value: 2, text: 'Reach the Catacombs' },
+    start: { gold: 120, inventory: { mat_gold: 1, ink_gold: 1 }, oilMax: 70, oil: 70 },
   },
 };

@@ -1,4 +1,4 @@
-import { REGIONS, RAW_MATERIALS, ENCOUNTER, LANTERN, EVENTS } from './data.js';
+import { REGIONS, RAW_MATERIALS, ENCOUNTER, LANTERN, EVENTS, PRISTINE } from './data.js';
 
 export const WALL = 0, FLOOR = 1;
 export const MAP_W = 46, MAP_H = 32;
@@ -123,7 +123,7 @@ export function generateRegion(regionIdx, seed) {
     const spot = freeTileIn(rooms[randInt(rng, 0, rooms.length - 1)]);
     if (!spot) continue;
     const raw = weightedPick(region.raws, rng);
-    place('node', ...spot, { raw, amount: rng() < 0.35 ? 2 : 1 });
+    place('node', ...spot, { raw, amount: rng() < 0.35 ? 2 : 1, pristine: rng() < PRISTINE.chance });
   }
 
   reveal(world);
