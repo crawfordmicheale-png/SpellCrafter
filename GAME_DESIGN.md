@@ -164,6 +164,10 @@ Each floor has 1–2 events, marked on the map with a purple glow. Every event o
 | The Trapped Scribe | Lift the shelf: lose 8 HP, learn a spell for your Grimoire. Take his purse: +35 gold, +25 Dread. Walk on: +5 Dread. |
 | The Ink Well | Drink: 50% two monster parts, 50% lose 10 HP. Fill your bottles: two random inks, +10 Dread. |
 | Hanged Lanterns | Cut one down: +40 oil, then a fight. Climb for it: +25 oil, lose 6 HP. |
+| The Chained Book | Read it: a rare ink (Ichor or Ghostlight), +2 Corruption. Burn it: +35 oil. |
+| The Dead Peddler | Search his pack: three raws and 25 gold, but 40% of the time something in the pack attacks. Bury him: −20 Dread. |
+| The Mirror Pool | Gaze: a copy of one of your crafted cards, +15 Dread. Drink: heal 15, +2 Corruption. |
+| The Ink-Stained Altar | Offer a starter card: lose it, gain a relic. Offer blood: lose 10 HP, gain Ichor and a Pristine Essence. |
 
 ### 4.6 Merchant
 - Sells raws, refined ingredients and monster parts. Prices are set by rarity.
@@ -284,10 +288,26 @@ Passive trinkets. Each elite offers a choice of 3. Reliquary boxes have a 15% ch
 
 ---
 
+## 7.6 Elites, Guardians and the Boss
+
+Each floor has an **elite** that wanders a side room and a **guardian** that stands on the stairs down. You can't descend until the guardian is beaten. Both drop a choice of 3 relics.
+
+| Floor | Elite | Guardian (phase 2 at half HP) |
+|---|---|---|
+| The Chapel Ruins | The Gravedigger (40) | The Bell Warden (54): *The bell cracks* |
+| The Drowned Archive | The Drowned Abbot (48) | The Pale Scrivener (62): *The Scrivener writes back* |
+| The Catacombs | The Choirmaster (54) | The Ossuary Saint (68): *The Saint rises* |
+| The Last Library | none | The Unbound Grimoire (110, boss): *The final page* |
+
+- **Phase 2:** when a guardian or the boss drops to half HP, a banner announces the change. It gains Strength and Block and switches to a harder move set, starting from that set's first move.
+- Phase changes can be triggered by direct damage, the Detonate reaction, or poison ticks.
+
+---
+
 ## 8. Run Structure
 
 - 4 floors: The Chapel Ruins → The Drowned Archive → The Catacombs → The Last Library (boss). Enemy HP scales ×1, ×1.1, ×1.2, ×1.3 by floor.
-- Each floor: ~11 rooms, 12–14 scavenge spots, 2–3 reliquary boxes, a writing desk near the start, a merchant, an elite, and the stairs in the farthest room.
+- Each floor: ~11 rooms, 12–14 scavenge spots, 2–3 reliquary boxes, a writing desk near the start, a merchant, an elite, and the stairs in the farthest room, held by the floor's guardian.
 - **You can craft only at writing desks.** Each desk allows one rest (heal 30% max HP).
 - Descending the stairs restores 20% max HP.
 
@@ -312,7 +332,11 @@ Passive trinkets. Each elite offers a choice of 3. Reliquary boxes have a 15% ch
 - The Inkbinder glides between tiles with a step bob; the camera stays locked to the sprite-pixel grid so nothing shimmers.
 - Elites, the boss and events hover gently. Pickups float up as text over the tile.
 - In fights, cast cards fly out of your hand, enemies shake and flash white when hit and sink when killed, damage and Block numbers rise, and a red vignette flashes when you are hurt.
+- Heavy hits shake the screen (bigger shakes for hits on you and for kills). Cast cards burst into sparks in their ink colors, and scavenging or opening a reliquary throws sparks on the map.
 - Everything respects the reduced-motion setting.
+
+### 9.3 Guided first run
+Short tips appear once each, the first time they matter: exploring, the writing desk, the first fight, low lantern oil, Corruption, and the first guardian. Each one has "Got it" and "Turn off tips". What you've seen is saved with the rest of your progress.
 
 ### 9.2 Sound
 All sound is synthesized in the browser (Web Audio), so there are no audio files. Effects cover footsteps, pickups, reliquaries, casting, hits, kills, Block, hurt, healing, crafting (quill scratch and chime), discovering a spell, burning a card, stairs, encounters, events, victory and defeat. Each floor has its own ambient drone with echoing water drips. A Sound on/off toggle sits in the top bar and is remembered.
@@ -356,4 +380,5 @@ Decided: random encounters stay as they are (driven by Dread). Lantern oil is in
 6. ~~Persistent Grimoire~~, ~~a fourth floor, new creatures, enchantments, recipes and events~~, ~~animation and sound~~ (done)
 7. ~~Ink reactions, relics, save and continue~~ (done)
 8. ~~Unlockable Inkbinders, rare inks, pristine finds, card wear, Corruption and forbidden recipes~~ (done)
-9. More events and bosses, polish.
+9. ~~More events, floor guardians with boss phases, new elites, polish (screen shake, particles, guided first run)~~ (done)
+10. Next: playtesting feedback.

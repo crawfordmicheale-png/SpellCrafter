@@ -1,6 +1,6 @@
 import {
   INK_COLORS, INK_MATERIALS, CARD_MATERIALS, ENCHANTMENTS, INGREDIENTS, RECIPES, ENEMIES, REPAIR_PRICE,
-  REGIONS, REFINING, RAW_MATERIALS, LANTERN, EVENTS, RELICS, REACTIONS, VARIANTS, CORRUPTION, PRISTINE,
+  REGIONS, REFINING, RAW_MATERIALS, LANTERN, EVENTS, RELICS, REACTIONS, VARIANTS, CORRUPTION, PRISTINE, HINTS,
 } from './data.js';
 import { resolveEvent } from './events.js';
 import { loadMeta, saveMeta, learn, recordRun, forget, loadSoundPref, saveSoundPref, saveRunText, loadRunText, clearRun } from './meta.js';
@@ -249,6 +249,23 @@ function hover(x, y, e) {
   el.hidden = false;
 }
 
+// ---------- first-run tips ----------
+
+function hintHtml(id) {
+  meta.hints ||= { seen: [], off: false };
+  if (meta.hints.off || meta.hints.seen.includes(id)) return '';
+  return `<div class="hint" role="note"><p>${HINTS[id]}</p>
+    <div class="hint-acts"><button data-act="hintOk" data-id="${id}">Got it</button><button class="linkish" data-act="hintsOff">Turn off tips</button></div></div>`;
+}
+
+function exploreHint() {
+  const exit = run.world.objects.find(o => o.type === 'exit' && o.guard);
+  if (run.corruption >= 3) { const h = hintHtml('corruption'); if (h) return h; }
+  if (run.oil < 30) { const h = hintHtml('lantern'); if (h) return h; }
+  if (exit && run.world.seen[exit.y * run.world.w + exit.x]) { const h = hintHtml('guardian'); if (h) return h; }
+  return hintHtml('explore');
+}
+
 function renderSide() {
   const side = document.getElementById('side');
   if (!side) return;
@@ -259,7 +276,7 @@ function renderSide() {
     .map(k => `<li title="${ENCHANTMENTS[k].desc}">${ENCHANTMENTS[k].part} <small>${ENCHANTMENTS[k].name}</small><b>${run.inventory[`ench_${k}`]}</b></li>`).join('');
   const refined = Object.entries(run.inventory).filter(([id]) => /^(color|ink|mat)_/.test(id)).reduce((s, [, n]) => s + n, 0);
   let action = '';
-  if (standingOn?.type === 'exit') {
+  if (standingOn?.type === 'exit' && !standingOn.guard) {
     const next = REGIONS[run.regionIdx + 1];
     action = `<div class="prompt"><p>Stairs lead down into <b>${next.name}</b>. You cannot return to this floor.</p>
       <button class="primary" data-act="descend">Descend</button></div>`;
@@ -274,6 +291,7 @@ function renderSide() {
   const lanternNote = run.oil <= 0 ? 'Your lantern is out. Things find you twice as often.'
     : run.oil < 12 ? 'Your lantern is guttering.' : '';
   side.innerHTML = `
+    ${exploreHint()}
     <h2>${region.name}</h2>
     <p class="intro">${region.intro}</p>
     ${action}
@@ -338,6 +356,7 @@ function interact(obj) {
       logExplore(`${r.pristine ? 'Pristine! ' : ''}You pick through the ${objectName(obj).toLowerCase()}: ${listItems(r.items)}.`);
       if (r.pristine) view?.float(obj.x, obj.y, 'Pristine Essence', '#bfe8ff');
       view?.float(obj.x, obj.y, `+${r.items.length} ${itemName(r.items[0])}`, '#e0b95c');
+      view?.burst(obj.x, obj.y, r.pristine ? '#bfe8ff' : RAW_MATERIALS[obj.raw].color);
       sfx('pickup');
       standingOn = null;
       break;
@@ -347,6 +366,7 @@ function interact(obj) {
       logExplore(`The reliquary opens: ${listItems(r.items)} and ${r.gold} gold.`);
       r.items.forEach(id => view?.float(obj.x, obj.y, itemName(id), '#e0b95c'));
       view?.float(obj.x, obj.y, `+${r.gold} gold`, '#f0d27a');
+      view?.burst(obj.x, obj.y, '#e0b95c', 20);
       if (r.relic) {
         logExplore(`Beneath the rest, wrapped in cloth: ${RELICS[r.relic].name}. ${RELICS[r.relic].desc}`);
         view?.float(obj.x, obj.y, RELICS[r.relic].name, '#c3a2de');
@@ -371,7 +391,10 @@ function interact(obj) {
       startFight([obj.enemy], { kind: 'boss', obj });
       break;
     case 'exit':
-      logExplore('A stair winds down into the dark.');
+      if (obj.guard) {
+        logExplore(`${ENEMIES[obj.guard].name} stands between you and the stair.`);
+        startFight([obj.guard], { kind: 'guardian', obj });
+      } else logExplore('A stair winds down into the dark.');
       break;
     case 'up':
       logExplore('Far above, a square of grey daylight.');
@@ -534,6 +557,7 @@ function renderBench() {
   const body = benchTab === 'refine' ? refineTab() : benchTab === 'deck' ? deckTab() : inscribeTab();
   app.innerHTML = `
   <section class="bench">
+    ${hintHtml('desk')}
     <header class="screen-head bench-head">
       <div>
         <h2>The Writing Desk</h2>
@@ -578,10 +602,11 @@ function renderFight() {
 
   const mana = Array.from({ length: Math.max(run.energy, c.player.energy) }, (_, i) => `<i class="${i < c.player.energy ? 'on' : ''}"></i>`).join('');
   const recent = c.log.slice(-7).map(l => `<li>${l}</li>`).join('');
-  const title = fightCtx.kind === 'random' ? 'Something finds you in the dark' : fightCtx.kind === 'elite' ? 'A guardian bars the way' : 'The Last Library';
+  const title = { random: 'Something finds you in the dark', elite: 'Something guards this room', guardian: 'The guardian of the stair', boss: 'The Last Library' }[fightCtx.kind];
 
   app.innerHTML = `
   <section class="fight">
+    ${hintHtml('fight')}
     <p class="fight-title">${title}</p>
     <div class="enemies">${enemies}</div>
     <div class="table">
@@ -671,6 +696,7 @@ function renderEvent() {
   const body = r
     ? `<p class="result">${r.text}</p>
        ${r.items?.length ? `<ul class="loots">${r.items.map(id => `<li class="loot r-${INGREDIENTS[id].rarity}">${itemName(id)}</li>`).join('')}</ul>` : ''}
+       ${r.relic ? `<div class="relicpick">${relicCard(r.relic)}</div>` : ''}
        ${r.learned ? `<p class="notice rare">${RECIPES.find(x => x.id === r.learned).name} is now written in your Grimoire, for this run and every run after.</p>` : ''}
        <button class="primary" data-act="${r.fight ? 'eventFight' : 'toMap'}">${r.fight ? 'Face it' : 'Continue'}</button>`
     : `<ul class="choices">${ev.options.map(o => `<li><button data-act="choose" data-opt="${o.id}"><b>${o.label}</b>${o.desc ? `<span>${o.desc}</span>` : ''}</button></li>`).join('')}</ul>`;
@@ -748,12 +774,15 @@ function afterCombatAction() {
   }
   if (combat.over === 'lost') { endRun(false); return; }
   if (fightCtx.kind === 'boss') { endRun(true); return; }
-  if (fightCtx.obj) fightCtx.obj.gone = true;
-  rewards = rollRewards(fightCtx.enemies, { elite: fightCtx.kind === 'elite', dice: hasRelic(run, 'dice') });
-  if (fightCtx.kind === 'elite') rewards.relicChoices = relicChoices(run, 3);
+  const big = fightCtx.kind === 'elite' || fightCtx.kind === 'guardian';
+  if (fightCtx.kind === 'guardian') fightCtx.obj.guard = null; // the stairs stay, now open
+  else if (fightCtx.obj) fightCtx.obj.gone = true;
+  rewards = rollRewards(fightCtx.enemies, { elite: big, dice: hasRelic(run, 'dice') });
+  if (big) rewards.relicChoices = relicChoices(run, 3);
   rewards.salvaged = combat.salvaged;
   applyRewards(run, rewards);
-  logExplore(fightCtx.kind === 'elite' ? `The ${ENEMIES[fightCtx.enemies[0]].name} falls.` : 'You survive the encounter.');
+  logExplore(fightCtx.kind === 'guardian' ? `The ${ENEMIES[fightCtx.enemies[0]].name} falls. The stair is open.`
+    : fightCtx.kind === 'elite' ? `The ${ENEMIES[fightCtx.enemies[0]].name} falls.` : 'You survive the encounter.');
   screen = 'rewards';
 }
 
@@ -817,6 +846,8 @@ const actions = {
     logExplore(`You take the ${RELICS[id].name}.`);
   },
   codex() { forgetArmed = false; screen = 'codex'; },
+  hintOk({ id }) { meta.hints ||= { seen: [], off: false }; meta.hints.seen.push(id); saveMeta(meta); },
+  hintsOff() { meta.hints ||= { seen: [], off: false }; meta.hints.off = true; saveMeta(meta); },
   pickVariant({ id }) { if (isUnlocked(meta, id)) { selectedVariant = id; sfx('click'); } },
   forget() {
     if (!forgetArmed) { forgetArmed = true; return; }
@@ -834,7 +865,8 @@ const actions = {
     eventCtx.result = r;
     eventCtx.obj.gone = true;
     standingOn = null;
-    if (r.learned) { learn(meta, r.learned); sfx('discover'); }
+    if (r.relic) { gainRelic(run, r.relic); sfx('relic'); }
+    else if (r.learned) { learn(meta, r.learned); sfx('discover'); }
     else if (r.items?.length) sfx('pickup');
     logExplore(`${EVENTS[eventCtx.id].name}: ${r.text}`);
   },
@@ -954,8 +986,35 @@ const actions = {
 
 // ---------- combat effects ----------
 
-function snapshot() {
+function shake(size) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  app.classList.remove('shake-s', 'shake-l');
+  void app.offsetWidth; // restart the animation
+  app.classList.add(size === 'l' ? 'shake-l' : 'shake-s');
+  setTimeout(() => app.classList.remove('shake-s', 'shake-l'), 450);
+}
+
+// Ink-colored sparks that fly out of an element.
+function burst(el, color, n = 14) {
+  if (!el || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const box = document.createElement('div');
+  box.className = 'burst';
+  for (let i = 0; i < n; i++) {
+    const p = document.createElement('i');
+    const a = Math.random() * Math.PI * 2, d = 40 + Math.random() * 70;
+    p.style.setProperty('--dx', `${Math.cos(a) * d}px`);
+    p.style.setProperty('--dy', `${Math.sin(a) * d - 20}px`);
+    p.style.background = color;
+    box.appendChild(p);
+  }
+  el.appendChild(box);
+  setTimeout(() => box.remove(), 800);
+}
+
+function snapshot(colors = null) {
   return {
+    colors,
+    phase: combat.phaseEvent?.n,
     enemies: combat.enemies.map(e => ({ hp: e.hp })),
     hp: run.hp, block: combat.player.block,
     reactions: combat.lastReaction?.n,
@@ -994,6 +1053,8 @@ function combatFx(before) {
       hit = true;
       enemyEls[i]?.classList.add('hit');
       floatAt(enemyEls[i], `-${d}`, 'dmg');
+      burst(enemyEls[i], before.colors ? INK_COLORS[before.colors[0]].hue : '#7fa24a');
+      if (d >= 15) shake('s');
       if (e.hp <= 0) { killed = true; enemyEls[i]?.classList.add('dying'); }
     }
   });
@@ -1002,6 +1063,7 @@ function combatFx(before) {
   if (dhp < 0) {
     sfx('hurt');
     floatAt(playerEl, `${dhp}`, 'dmg');
+    shake(dhp <= -10 ? 'l' : 's');
     const v = document.createElement('div');
     v.className = 'hurt-vignette';
     document.body.appendChild(v);
@@ -1018,6 +1080,16 @@ function combatFx(before) {
   if (combat.wornUp && combat.wornUp.n !== before.worn) {
     floatAt(app.querySelector('.player'), `${combat.wornUp.name}: ${combat.wornUp.tier}`, 'worn');
     sfx('craft');
+  }
+  const ph = combat.phaseEvent;
+  if (ph && ph.n !== before.phase) {
+    sfx('encounter');
+    shake('l');
+    const banner = document.createElement('div');
+    banner.className = 'reaction-banner phase-banner';
+    banner.textContent = ph.name;
+    (app.querySelector('.enemies') || app).appendChild(banner);
+    setTimeout(() => banner.remove(), 1800);
   }
   const rx = combat.lastReaction;
   if (rx && rx.n !== before.reactions) {
@@ -1038,7 +1110,8 @@ document.addEventListener('click', e => {
   const fn = actions[act];
   if (!fn) return;
   const inFight = screen === 'fight' && (act === 'play' || act === 'endTurn');
-  const before = inFight ? snapshot() : null;
+  const playedColors = act === 'play' ? combat?.hand.find(k => k.uid === el.dataset.uid)?.colors : null;
+  const before = inFight ? snapshot(playedColors) : null;
   const clone = act === 'play' ? el.cloneNode(true) : null;
   const rect = act === 'play' ? el.getBoundingClientRect() : null;
   fn({ ...el.dataset });

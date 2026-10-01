@@ -12,7 +12,7 @@ export function objectName(obj) {
     case 'chest': return 'Reliquary box';
     case 'desk': return 'Writing desk';
     case 'merchant': return 'The Rag Merchant';
-    case 'exit': return 'Stairs down';
+    case 'exit': return obj.guard ? `${ENEMIES[obj.guard].name}, guarding the stairs down` : 'Stairs down';
     case 'up': return 'Stairs up to the surface';
     case 'event': return EVENTS[obj.event].name;
     case 'elite': case 'boss': return ENEMIES[obj.enemy].name;
@@ -77,6 +77,7 @@ export function createExploreView(canvas, world, { onTile, onHover, playerSwap }
   // Smooth movement: the drawn position glides toward the real tile.
   let rx = world.px, ry = world.py, lastT = 0, walkT = 0;
   const floats = []; // rising text for pickups
+  const sparks = []; // pixel particles
 
   function draw(t = 0) {
     const dt = lastT ? Math.min(100, t - lastT) : 16;
@@ -127,7 +128,7 @@ export function createExploreView(canvas, world, { onTile, onHover, playerSwap }
       if (o.x < x0 - 1 || o.y < y0 - 1 || o.x > x0 + cols + 1 || o.y > y0 + rows + 1) continue;
       const sx = sxOf(o.x), sy = syOf(o.y);
       if (o.type === 'desk') glow(sx + TILE * 0.8, sy + TILE * 0.1, TILE * (1.4 + flicker * 0.1), '#ffcf7a55');
-      if (o.type === 'boss' || o.type === 'elite') {
+      if (o.type === 'boss' || o.type === 'elite' || (o.type === 'exit' && o.guard)) {
         const pulse = reduceMotion() ? 0 : Math.sin(t / 300) * 0.15;
         glow(sx + TILE / 2, sy + TILE / 2, TILE * (0.9 + pulse), '#b1352f66');
       }
@@ -144,6 +145,8 @@ export function createExploreView(canvas, world, { onTile, onHover, playerSwap }
       }
       const lift = (o.type === 'elite' || o.type === 'boss' || o.type === 'event') ? bobbing : 0;
       blit(sprite(name, { swap }), sx, sy + lift);
+      // A guardian stands on the stairs until it is beaten.
+      if (o.type === 'exit' && o.guard) blit(sprite(o.guard), sx, sy + bobbing);
     }
 
     // The Inkbinder, facing the way they last walked, with a step bob.
@@ -169,6 +172,19 @@ export function createExploreView(canvas, world, { onTile, onHover, playerSwap }
     const lx = ppx + TILE * (world.facing < 0 ? 0.1 : 0.9), ly = ppy + TILE * 0.55 + bob;
     glow(lx, ly, TILE * (r + 0.5 + flicker * 0.15), '#ffc46a26');
     glow(lx, ly, TILE * 0.6, '#ffd27a55');
+
+    // Sparks: square pixels that fly out and fall.
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const p = sparks[i];
+      const age = (t - (p.start ??= t)) / 600;
+      if (age >= 1) { sparks.splice(i, 1); continue; }
+      const px = sxOf(p.x) + TILE / 2 + p.vx * age * TILE, py = syOf(p.y) + TILE / 2 + (p.vy * age + age * age * 0.9) * TILE;
+      const size = Math.max(2, Math.round(scale * (1 - age * 0.5)));
+      ctx.globalAlpha = 1 - age;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(Math.round(px), Math.round(py), size, size);
+      ctx.globalAlpha = 1;
+    }
 
     // Floating pickup text.
     for (let i = floats.length - 1; i >= 0; i--) {
@@ -210,6 +226,13 @@ export function createExploreView(canvas, world, { onTile, onHover, playerSwap }
     destroy() { alive = false; cancelAnimationFrame(raf); ro.disconnect(); },
     draw,
     // Show rising text over a tile, e.g. "+2 Ash". Several at once stack upward.
+    burst(x, y, color = '#e0b95c', n = 14) {
+      if (reduceMotion()) return;
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2, v = 0.4 + Math.random() * 0.7;
+        sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 0.5, color });
+      }
+    },
     float(x, y, text, color = '#e6dcc6') {
       floats.push({ x, y, text, color, row: floats.filter(f => f.x === x && f.y === y).length });
     },

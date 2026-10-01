@@ -477,3 +477,24 @@ button.danger { color: #e7837b; border-color: #5a2320; margin-right: auto; }
 .codexlist > li.forbidden { border-color: #4a5320; background: linear-gradient(#22241a, var(--panel)); }
 .codexlist > li.forbidden > div b { color: #b7c95a; }
 .ing.k-catalyst span { color: #bfe8ff; }
+
+/* ---------- tips ---------- */
+.hint {
+  display: grid; gap: 8px; padding: 12px 14px; margin-bottom: 12px;
+  background: #1d2430; border: 1px solid #3f5a78; border-left: 3px solid var(--mana); border-radius: 4px;
+}
+.hint p { font-size: .92rem; }
+.hint-acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.hint-acts button { padding: 4px 12px; font-size: .85rem; }
+button.linkish { background: none; border: none; color: var(--muted); text-decoration: underline; padding: 4px 6px; }
+
+/* ---------- impact ---------- */
+@keyframes shake-s { 0%, 100% { transform: none; } 25% { transform: translate(-3px, 1px); } 50% { transform: translate(3px, -1px); } 75% { transform: translate(-2px, 0); } }
+@keyframes shake-l { 0%, 100% { transform: none; } 15% { transform: translate(-8px, 3px); } 30% { transform: translate(7px, -4px); } 45% { transform: translate(-6px, 2px); } 60% { transform: translate(5px, -2px); } 80% { transform: translate(-2px, 1px); } }
+#app.shake-s { animation: shake-s .3s ease-out; }
+#app.shake-l { animation: shake-l .45s ease-out; }
+.burst { position: absolute; left: 50%; top: 35%; width: 0; height: 0; pointer-events: none; z-index: 4; }
+.burst i { position: absolute; width: 6px; height: 6px; box-shadow: 0 0 6px currentColor; animation: spark .7s ease-out forwards; }
+@keyframes spark { from { transform: translate(0, 0); opacity: 1; } to { transform: translate(var(--dx), var(--dy)) scale(.4); opacity: 0; } }
+.phase-banner { color: #ff9d8f; text-shadow: 0 0 18px #b1352f, 0 3px 0 #000; font-size: 2.6rem; }
+@media (prefers-reduced-motion: reduce) { #app.shake-s, #app.shake-l { animation: none; } }

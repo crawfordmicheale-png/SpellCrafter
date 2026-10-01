@@ -69,8 +69,21 @@ export const bloodCost = (c, card) => Math.max(0, (card.hpCost || 0) - (hasRelic
 const alive = c => c.enemies.filter(e => e.hp > 0);
 
 export function currentMove(enemy) {
-  const moves = ENEMIES[enemy.key].moves;
+  const def = ENEMIES[enemy.key];
+  const moves = enemy.phase ? def.phase2.moves : def.moves;
   return moves[enemy.moveIdx % moves.length];
+}
+
+// Bosses change at half health: new moves, a burst of Strength and Block.
+function checkPhase(c, enemy) {
+  const p = ENEMIES[enemy.key].phase2;
+  if (!p || enemy.phase || enemy.hp <= 0 || enemy.hp > enemy.maxHp * p.at) return;
+  enemy.phase = 1;
+  enemy.moveIdx = 0;
+  enemy.strength += p.strength || 0;
+  enemy.block += p.block || 0;
+  log(c, `${p.name}! ${p.text}`);
+  c.phaseEvent = { name: p.name, text: p.text, n: (c.phaseEvent?.n || 0) + 1 };
 }
 
 function draw(c, n) {
@@ -113,6 +126,7 @@ function damageEnemy(c, enemy, amount, pierce = false) {
   const dealt = Math.min(enemy.hp, amount - blocked);
   enemy.hp -= dealt;
   if (enemy.hp <= 0) log(c, `${enemy.name} is unwritten.`);
+  checkPhase(c, enemy);
   return { dealt, killed: enemy.hp <= 0 && dealt > 0 };
 }
 
@@ -285,6 +299,7 @@ function react(c, key, target) {
         target.hp -= dmg;
         target.poison = 0;
         dealt += dmg;
+        checkPhase(c, target);
         if (target.hp <= 0) { killed = true; log(c, `${target.name} burns away.`); }
         break;
       }
@@ -310,6 +325,7 @@ export function endTurn(c) {
       e.hp -= n;
       e.poison--;
       log(c, `${e.name} takes ${n} poison.`);
+      checkPhase(c, e);
       if (e.hp <= 0) { log(c, `${e.name} rots away.`); continue; }
     }
     for (const a of currentMove(e).actions) {

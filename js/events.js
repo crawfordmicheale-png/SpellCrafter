@@ -1,4 +1,5 @@
-import { EVENTS, ENCHANTMENTS, INK_COLORS, RECIPES, REGIONS, LANTERN, CORRUPTION } from './data.js';
+import { EVENTS, ENCHANTMENTS, INK_COLORS, RECIPES, REGIONS, LANTERN, CORRUPTION, RAW_MATERIALS, RELICS } from './data.js';
+import { cloneCard } from './crafting.js';
 import { lightRadius, reveal } from './world.js';
 
 const pick = (arr, rng) => arr[Math.floor(rng() * arr.length)];
@@ -12,7 +13,8 @@ function addOil(run, n) {
 }
 
 // Applies an event choice to the run. Returns
-//   { text, items?, learned?, fight? }
+//   { text, items?, learned?, fight?, relic? }
+// A returned `relic` id is for the caller to grant (run.js owns relic effects).
 // `learned` is a recipe id newly added to the Grimoire.
 export function resolveEvent(run, eventId, optionId, rng = Math.random) {
   const add = (id, n = 1) => { run.inventory[id] = (run.inventory[id] || 0) + n; };
@@ -70,6 +72,60 @@ export function resolveEvent(run, eventId, optionId, rng = Math.random) {
       const oil = addOil(run, 25);
       run.hp = Math.max(1, run.hp - 6);
       return { text: `The chain bites into your palms, but you reach the lantern (+${oil} oil, -6 HP).` };
+    }
+    case 'book:read': {
+      const ink = pick(['ink_ichor', 'ink_ghostlight'], rng);
+      add(ink);
+      run.corruption = (run.corruption || 0) + 2;
+      return { text: 'The words crawl off the page and into your bottles. You will be hearing them for a while.', items: [ink] };
+    }
+    case 'book:burn': {
+      const oil = addOil(run, 35);
+      return { text: `It screams as it burns, and it burns very brightly (+${oil} oil).` };
+    }
+    case 'corpse:search': {
+      if (rng() < 0.4) {
+        return { text: 'You open the pack. Something inside it opens its eyes.', fight: pick(REGIONS[run.regionIdx].encounters, rng) };
+      }
+      const raws = Object.keys(RAW_MATERIALS).filter(k => RAW_MATERIALS[k].node);
+      const items = [0, 1, 2].map(() => `raw_${pick(raws, rng)}`);
+      items.forEach(id => add(id));
+      run.gold += 25;
+      return { text: 'His pack is heavy with the wares nobody wanted. Twenty-five gold in the lining, too.', items };
+    }
+    case 'corpse:bury': {
+      const eased = Math.min(run.dread, 20);
+      run.dread -= eased;
+      return { text: `You scrape a shallow grave and say what words you remember. Your nerves settle (-${eased} Dread).` };
+    }
+    case 'mirror:gaze': {
+      run.dread += 15;
+      const crafted = run.deck.filter(k => k.crafted);
+      if (!crafted.length) return { text: 'Your reflection shrugs. It has nothing you have not written yourself.' };
+      const copy = cloneCard(pick(crafted, rng));
+      run.deck.push(copy);
+      return { text: `Your reflection hands you a card through the water: ${copy.name}. Its fingers are very cold.` };
+    }
+    case 'mirror:drink': {
+      const before = run.hp;
+      run.hp = Math.min(run.maxHp, run.hp + 15);
+      run.corruption = (run.corruption || 0) + 2;
+      return { text: `It tastes of nothing at all. You feel better (+${run.hp - before} HP), and somehow worse.` };
+    }
+    case 'altar:card': {
+      const starters = run.deck.filter(k => !k.crafted);
+      if (!starters.length || run.deck.length <= LANTERN.minDeck) return { text: 'You have nothing plain enough to offer.' };
+      const card = pick(starters, rng);
+      run.deck = run.deck.filter(k => k !== card);
+      const unowned = Object.keys(RELICS).filter(id => !run.relics.includes(id));
+      if (!unowned.length) { run.gold += 40; return { text: `The ${card.name} soaks into the stone. The bowl fills with coins (+40 gold).` }; }
+      const relic = pick(unowned, rng);
+      return { text: `The ${card.name} soaks into the stone. When you look again, the bowl holds the ${RELICS[relic].name}.`, relic };
+    }
+    case 'altar:blood': {
+      run.hp = Math.max(1, run.hp - 10);
+      add('raw_ichor'); add('ess_pristine');
+      return { text: 'You cut your palm over the bowl (-10 HP). The ink on the altar drinks, and gives something back.', items: ['raw_ichor', 'ess_pristine'] };
     }
     default:
       return { text: 'You leave it behind.' };
