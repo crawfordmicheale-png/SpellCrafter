@@ -52,7 +52,7 @@ const hasRelic = (run, id) => !!run.relics?.includes(id);
 const pairKey = (a, b) => [a, b].sort().join('+');
 
 // Which reaction casting `colors` would set off, given the previous inscribed card's
-// colors. A card following a different color reacts; a hybrid always reacts with itself.
+// colors. A card following a different color reacts; a two-ink card always reacts with itself.
 export function reactionFor(prevColors, colors) {
   if (prevColors) {
     for (const p of prevColors) for (const q of colors) {
@@ -236,7 +236,10 @@ export function playCard(c, cardUid, targetIdx = 0) {
   if (card.goldOnCast) c.run.gold += card.goldOnCast;
   if (card.corrupts) c.run.corruption = (c.run.corruption || 0) + card.corrupts;
   const tier = recordCast(card);
-  if (tier) { log(c, `${card.name} is now ${tier}.`); c.wornUp = { name: card.name, tier, n: (c.wornUp?.n || 0) + 1 }; }
+  if (tier) {
+    log(c, `${card.name} is now ${tier}.${card.signaturePending ? ' Choose its signature at a writing desk.' : ''}`);
+    c.wornUp = { name: card.name, tier, n: (c.wornUp?.n || 0) + 1 };
+  }
 
   // Ink reactions. Only inscribed cards react; starter cards are plain ink.
   const reactKey = card.crafted ? reactionFor(c.lastColors, card.colors) : null;

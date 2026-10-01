@@ -1,18 +1,21 @@
 import {
   INK_COLORS, INK_MATERIALS, CARD_MATERIALS, ENCHANTMENTS, INGREDIENTS, RECIPES, ENEMIES, REPAIR_PRICE,
-  REGIONS, REFINING, RAW_MATERIALS, LANTERN, EVENTS, RELICS, REACTIONS, VARIANTS, CORRUPTION, PRISTINE, HINTS,
-  STORY, NODE_TYPES, OIL_WARE, CAMP, MAP,
+  REGIONS, RAW_MATERIALS, LANTERN, EVENTS, RELICS, REACTIONS, VARIANTS, CORRUPTION, PRISTINE, HINTS,
+  STORY, NODE_TYPES, OIL_WARE, CAMP, MAP, ALT_SOURCES, SECOND_INK_COST, SIGNATURES, NAME_MAX,
 } from './data.js';
 import { resolveEvent } from './events.js';
 import { availableNodes, guardianOf } from './overworld.js';
 import { loadMeta, saveMeta, learn, recordRun, forget, loadSoundPref, saveSoundPref, saveRunText, loadRunText, clearRun } from './meta.js';
 import { unlock, sfx, setEnabled, isEnabled, startAmbient, stopAmbient } from './audio.js';
 import { spriteURL, glyphURL } from './sprites.js';
-import { craftCard, validateBlueprint, describeCard, cardComponents, wearName } from './crafting.js';
+import {
+  craftCard, validateBlueprint, describeCard, cardComponents, wearName, spendPlan, available, recipeHint,
+  chooseSignature, renameCard, canRename,
+} from './crafting.js';
 import { createCombat, playCard, endTurn, canPlay, effectiveCost, currentMove, previewReaction } from './combat.js';
 import {
   createRun, currentRegion, descend, craftIntoDeck, salvageCard, rollRewards, applyRewards,
-  refine, canRefine, reinscribe, mend, scavenge, openChest, burnCard, burnValue, resurface,
+  reinscribe, mend, scavenge, openChest, burnCard, burnValue, resurface,
   gainRelic, relicChoices, hasRelic, serializeRun, deserializeRun, isUnlocked, oilMax, corruptionState,
   currentNode, enterNode, leaveDelve, campChoice, buyOil,
 } from './run.js';
@@ -85,7 +88,9 @@ function cardHtml(card, { cost = card.cost, disabled = false, action = '', extra
   const worn = wearName(card);
   const ench = card.enchants.map(e => `<span class="tag" title="${ENCHANTMENTS[e].desc}">${ENCHANTMENTS[e].name}</span>`).join('')
     + (worn ? `<span class="tag worn" title="Cast ${card.casts} times">${worn}</span>` : '')
-    + (card.corrupts ? '<span class="tag corrupt" title="+1 Corruption each cast">Corrupting</span>' : '');
+    + (card.corrupts ? '<span class="tag corrupt" title="+1 Corruption each cast">Corrupting</span>' : '')
+    + (card.signature ? `<span class="tag sig" title="${SIGNATURES[card.signature].desc}">${SIGNATURES[card.signature].name}</span>` : '')
+    + (card.signaturePending ? '<span class="tag sig" title="Choose its signature at a writing desk">Signature?</span>' : '');
   const inkLabel = card.inkMat ? `${INK_MATERIALS[card.inkMat].name} ink on ${CARD_MATERIALS[card.cardMat].name.toLowerCase()}` : 'Starter';
   const tag = action ? 'button' : 'div';
   // Wordy cards get a compact layout so their text stays on the card.
@@ -171,7 +176,7 @@ function renderTitle() {
       <li><b>Delve</b> into dungeons by tapping a tile, or with WASD or the arrow keys. Your lantern only reaches so far.</li>
       <li><b>Scavenge</b> raw materials. The longer you wander, the more Dread builds, and the more often things find you.</li>
       <li><b>Mind your lantern.</b> Oil burns down slowly. Feed it a card, or climb back to the surface to refill it.</li>
-      <li><b>Refine and craft</b> at writing desks. Monster parts become enchantments.</li>
+      <li><b>Craft</b> at writing desks: a page, an ink color and an ink material. Monster parts become enchantments.</li>
     </ul>
     <h3 class="section-title">Choose your Inkbinder</h3>
     <div class="variants">${Object.entries(VARIANTS).map(([id, v]) => {
@@ -340,11 +345,11 @@ function renderSide() {
   const side = document.getElementById('side');
   if (!side) return;
   const region = currentRegion(run);
-  const raws = Object.keys(RAW_MATERIALS).filter(k => run.inventory[`raw_${k}`])
-    .map(k => `<li><span class="swatch" style="--ink:${RAW_MATERIALS[k].color}"></span>${RAW_MATERIALS[k].name}<b>${run.inventory[`raw_${k}`]}</b></li>`).join('');
-  const parts = Object.keys(ENCHANTMENTS).filter(k => run.inventory[`ench_${k}`])
-    .map(k => `<li title="${ENCHANTMENTS[k].desc}">${ENCHANTMENTS[k].part} <small>${ENCHANTMENTS[k].name}</small><b>${run.inventory[`ench_${k}`]}</b></li>`).join('');
-  const refined = Object.entries(run.inventory).filter(([id]) => /^(color|ink|mat)_/.test(id)).reduce((s, [, n]) => s + n, 0);
+  const row = id => `<li title="${INGREDIENTS[id].hint || ''}">${INGREDIENTS[id].kind === 'color' ? `<span class="swatch" style="--ink:${INK_COLORS[INGREDIENTS[id].key].hue}"></span>` : ''}${itemName(id)}${INGREDIENTS[id].kind === 'enchant' ? ` <small>${ENCHANTMENTS[INGREDIENTS[id].key].name}</small>` : ''}<b>${run.inventory[id]}</b></li>`;
+  const held = prefix => Object.keys(INGREDIENTS).filter(id => id.startsWith(prefix) && run.inventory[id] > 0).map(row).join('');
+  const inks = held('color_') + held('ink_');
+  const pages = held('mat_') + held('raw_');
+  const parts = held('ench_') + held('ess_');
   let action = '';
   if (standingOn?.type === 'exit' && !standingOn.guard) {
     action = `<div class="prompt"><p>The way out. Climb back up to the map. You cannot return to this delve.</p>
@@ -373,11 +378,12 @@ function renderSide() {
     ${corruptionState(run) ? `<p class="warnline corrupt">${corruptionState(run) === 'Forsaken' ? 'You are Forsaken. Forbidden recipes answer you, and your enemies grow stronger.' : 'You are Tainted. Black and Blood cards hit harder, but you start every fight Weak.'}</p>` : ''}
     <ol class="elog" aria-live="polite">${exploreLog.slice(-5).map(l => `<li>${l}</li>`).join('')}</ol>
     <div class="satchel-mini">
-      <h3 class="panel-title">Raw materials</h3>
-      <ul>${raws || '<li class="none">Nothing yet</li>'}</ul>
+      <h3 class="panel-title">Inks</h3>
+      <ul>${inks || '<li class="none">Nothing yet</li>'}</ul>
+      <h3 class="panel-title">Pages and metals</h3>
+      <ul>${pages || '<li class="none">Nothing yet</li>'}</ul>
       <h3 class="panel-title">Monster parts</h3>
       <ul>${parts || '<li class="none">Nothing yet</li>'}</ul>
-      <p class="note">${refined} refined ingredients ready to craft.</p>
     </div>
     <ul class="legend">
       ${[['bone', 'Scavenge'], ['chest', 'Reliquary'], ['desk', 'Writing desk'],
@@ -498,50 +504,74 @@ function isSelected(kind, key) {
   return bp.enchants.includes(key);
 }
 
-function ingredientCounts() {
-  const counts = { ...run.inventory };
-  const bp = blueprint;
-  const used = [
-    bp.cardMat && `mat_${bp.cardMat}`, bp.inkMat && `ink_${bp.inkMat}`,
-    ...bp.colors.map(c => `color_${c}`), ...bp.enchants.map(e => `ench_${e}`), bp.pristine && 'ess_pristine',
-  ].filter(Boolean);
-  for (const id of used) counts[id]--;
-  return counts;
+// What is left once the current blueprint is paid for.
+function remainingInventory() {
+  const plan = spendPlan(blueprint, run.inventory, run.hp);
+  if (plan.error) return { ...run.inventory };
+  const left = { ...run.inventory };
+  for (const [id, n] of Object.entries(plan.items)) left[id] -= n;
+  return left;
+}
+
+// Where a slot option comes from, when it isn't the ready-made item.
+function sourceNote(kind, key) {
+  const alt = ALT_SOURCES[kind]?.[key];
+  const id = { cardMat: 'mat_', inkMat: 'ink_' }[kind] + key;
+  if (!alt || run.inventory[id] > 0) return '';
+  if (alt.hp) return `<small>bleed ${alt.hp} HP</small>`;
+  const [aid, n] = Object.entries(alt)[0];
+  return `<small>${n} ${itemName(aid)}</small>`;
+}
+
+const HINT_TEXT = {
+  color: { add: 'another ink wants in.', swap: 'a different ink would answer.' },
+  ink: { add: 'it wants a different ink material.', swap: 'the ink itself is wrong.' },
+  card: { add: 'it wants a different page.', swap: 'it wants a different page.' },
+  ench: { add: 'it wants something from a monster.', swap: 'it wants something from a monster.' },
+};
+
+function hintLine() {
+  const h = recipeHint(blueprint, run.grimoire, run.corruption);
+  if (!h) return '';
+  const known = run.grimoire.has(h.recipe.id);
+  return `<p class="inkstir" role="status"><b>The ink stirs.</b> ${known ? `One part from <i>${h.recipe.name}</i>: ` : 'You are one part from a named spell: '}${HINT_TEXT[h.kind][h.change]}</p>`;
 }
 
 function inscribeTab() {
-  const counts = ingredientCounts();
+  const left = remainingInventory();
   const groups = [
-    ['cardMat', 'Card material', CARD_MATERIALS, 'mat_'],
-    ['color', 'Ink color', INK_COLORS, 'color_'],
-    ['inkMat', 'Ink material', INK_MATERIALS, 'ink_'],
-    ['enchant', 'Enchantments (monster parts)', ENCHANTMENTS, 'ench_'],
-    ['catalyst', 'Catalyst', { pristine: { desc: `Makes the card Pristine: x${PRISTINE.mult} power.` } }, 'ess_'],
+    ['cardMat', 'Card material', CARD_MATERIALS],
+    ['color', 'Ink color', INK_COLORS],
+    ['inkMat', 'Ink material', INK_MATERIALS],
+    ['enchant', 'Enchantments (monster parts)', ENCHANTMENTS],
   ];
-  const satchel = groups.map(([kind, label, table, prefix]) => {
-    const items = Object.keys(table).filter(k => (run.inventory[prefix + k] || 0) > 0).map(k => {
-      const id = prefix + k;
-      const left = counts[id] ?? 0;
+  const satchel = groups.map(([kind, label, table]) => {
+    const items = Object.keys(table).filter(k => available(kind, k, run.inventory) > 0 || isSelected(kind, k)).map(k => {
+      const n = available(kind, k, left);
       const sel = isSelected(kind, k);
       const swatch = kind === 'color' ? `<span class="swatch" style="--ink:${INK_COLORS[k].hue}"></span>` : '';
-      const text = kind === 'enchant' ? `${ENCHANTMENTS[k].part} <small>${ENCHANTMENTS[k].name}</small>` : itemName(id);
-      if (kind === 'catalyst' && !(run.inventory[id] > 0)) return '';
-      return `<button class="ing k-${kind} m-${k}${sel ? ' sel' : ''}" data-act="pick" data-kind="${kind}" data-key="${k}" ${left <= 0 && !sel ? 'disabled' : ''} title="${table[k].desc}">
-        ${swatch}<span>${text}</span><b>${left}</b></button>`;
+      const id = { cardMat: 'mat_', color: 'color_', inkMat: 'ink_', enchant: 'ench_' }[kind] + k;
+      const text = kind === 'enchant' ? `${ENCHANTMENTS[k].part} <small>${ENCHANTMENTS[k].name}</small>` : `${itemName(id)} ${sourceNote(kind, k)}`;
+      return `<button class="ing k-${kind} m-${k}${sel ? ' sel' : ''}" data-act="pick" data-kind="${kind}" data-key="${k}" ${n <= 0 && !sel ? 'disabled' : ''} title="${table[k].desc}">
+        ${swatch}<span>${text}</span><b>${Number.isFinite(n) ? n : ''}</b></button>`;
     }).join('');
-    if (kind === 'catalyst' && !items) return '';
-    return `<div class="group"><h3>${label}</h3><div class="ings">${items || '<em class="none">None. Refine raw materials or find some.</em>'}</div></div>`;
-  }).join('');
+    return `<div class="group"><h3>${label}</h3><div class="ings">${items || '<em class="none">None yet. Scavenge or find some.</em>'}</div></div>`;
+  }).join('') + (run.inventory.ess_pristine > 0 || blueprint.pristine ? `<div class="group"><h3>Catalyst</h3><div class="ings">
+    <button class="ing k-catalyst${blueprint.pristine ? ' sel' : ''}" data-act="pick" data-kind="catalyst" data-key="pristine" title="Makes the card Pristine: stronger.">
+      <span>Pristine Essence</span><b>${(run.inventory.ess_pristine || 0) - (blueprint.pristine ? 1 : 0)}</b></button></div></div>` : '');
 
   const bp = blueprint;
   const slots = bp.cardMat ? CARD_MATERIALS[bp.cardMat].slots : 0;
   const slot = (label, val, kind, key) => `<button class="slot${val ? ' filled' : ''}" data-act="pick" data-kind="${kind}" data-key="${key || ''}" ${val ? '' : 'disabled'}>
       <small>${label}</small><span>${val || 'Empty'}</span></button>`;
-  const colorSlots = [0, 1].map(i => slot(i === 0 ? 'Ink color' : 'Mix a 2nd ink', bp.colors[i] && INK_COLORS[bp.colors[i]].name, 'color', bp.colors[i])).join('');
+  const colorSlots = [0, 1].map(i => slot(i === 0 ? 'Ink color' : `Second ink (+${SECOND_INK_COST} mana)`, bp.colors[i] && INK_COLORS[bp.colors[i]].name, 'color', bp.colors[i])).join('');
   const enchSlots = Array.from({ length: slots }, (_, i) => slot('Enchantment', bp.enchants[i] && ENCHANTMENTS[bp.enchants[i]].name, 'enchant', bp.enchants[i])).join('');
 
-  const err = validateBlueprint(bp, run.inventory);
+  const err = validateBlueprint(bp, run.inventory, run.hp);
   const preview = !validateBlueprint(bp) ? cardHtml(craftCard(bp, { corruption: run.corruption })) : `<div class="card ghost"><span>${err}</span></div>`;
+  const plan = spendPlan(bp, run.inventory, run.hp);
+  const bleed = !plan.error && plan.hp ? `<p class="note warnline">Writing this takes ${plan.hp} HP of your own blood.</p>` : '';
+  const pair = bp.colors.length === 2 ? REACTIONS[[...bp.colors].sort().join('+')] : null;
 
   const grimoire = RECIPES.map(r => run.grimoire.has(r.id)
     ? `<li class="known"><b>${r.name}</b> ${r.match.colors.map(c => INK_COLORS[c].short).join(' + ')} ink, ${INK_MATERIALS[r.match.inkMat].name}, ${CARD_MATERIALS[r.match.cardMat].name}${r.match.enchants ? `, ${r.match.enchants.map(e => ENCHANTMENTS[e].name).join(', ')}` : ''}</li>`
@@ -558,37 +588,17 @@ function inscribeTab() {
         ${enchSlots}
         ${bp.pristine ? slot('Catalyst', 'Pristine Essence', 'catalyst', 'pristine') : ''}
         ${bp.cardMat && !slots ? '<p class="note">Paper can’t hold enchantments.</p>' : ''}
+        ${pair ? `<p class="note">Two inks: sets off <b>${pair.name}</b> every cast. ${pair.desc}</p>` : ''}
       </div>
       <div class="panel preview">
         <h3 class="panel-title">Preview</h3>
         ${preview}
+        ${hintLine()}
+        ${bleed}
         <button class="primary" data-act="craft" ${err ? 'disabled' : ''}>Inscribe card</button>
       </div>
     </div>
     <div class="panel grimoire"><h3 class="panel-title">Grimoire (${run.grimoire.size} of ${RECIPES.length})</h3><ul>${grimoire}</ul></div>`;
-}
-
-function refineTab() {
-  const rows = REFINING.map(r => {
-    const err = canRefine(run, r);
-    const from = r.hpCost ? `${r.hpCost} of your HP` : Object.entries(r.from).map(([id, n]) => `${itemName(id)}${n > 1 ? ` ×${n}` : ''}`).join(' + ');
-    const to = Object.entries(r.to).map(([id, n]) => `${itemName(id)}${n > 1 ? ` ×${n}` : ''}`).join(', ');
-    const haveRaw = r.hpCost || Object.keys(r.from).some(id => run.inventory[id]);
-    if (!haveRaw) return '';
-    return `<li class="${err ? 'off' : ''}${r.hpCost ? ' bleed' : ''}">
-      <span class="from">${from}</span><span class="arrow" aria-hidden="true">→</span><span class="to">${to}</span>
-      <button data-act="refine" data-id="${r.id}" ${err ? `disabled title="${err}"` : ''}>${r.hpCost ? 'Bleed' : 'Refine'}</button></li>`;
-  }).join('');
-  const raws = Object.keys(RAW_MATERIALS).filter(k => run.inventory[`raw_${k}`])
-    .map(k => `<li><span class="swatch" style="--ink:${RAW_MATERIALS[k].color}"></span>${RAW_MATERIALS[k].name}<b>${run.inventory[`raw_${k}`]}</b></li>`).join('');
-  return `
-    <div class="refine-grid">
-      <div class="panel"><h3 class="panel-title">Raw materials</h3><ul class="rawlist">${raws || '<li class="none">You carry nothing to refine.</li>'}</ul></div>
-      <div class="panel"><h3 class="panel-title">Refining</h3>
-        <p class="note">Silver and gold can become ink, or with two of them, a card. Blood can always be had, at a price.</p>
-        <ul class="refines">${rows}</ul>
-      </div>
-    </div>`;
 }
 
 function deckTab() {
@@ -599,7 +609,16 @@ function deckTab() {
     else {
       if (k.crafted && Number.isFinite(k.durability) && k.durability < k.maxDurability) {
         const mat = `mat_${k.cardMat}`;
-        btns.push(`<button data-act="mend" data-uid="${k.uid}" ${run.inventory[mat] ? '' : `disabled title="Needs a ${itemName(mat)}"`}>Mend (1 ${itemName(mat)})</button>`);
+        const ok = available('cardMat', k.cardMat, run.inventory) > 0;
+        btns.push(`<button data-act="mend" data-uid="${k.uid}" ${ok ? '' : `disabled title="Needs a ${itemName(mat)}"`}>Mend (1 ${itemName(mat)})</button>`);
+      }
+      if (k.signaturePending) {
+        for (const [id, sig] of Object.entries(SIGNATURES)) {
+          btns.push(`<button class="sig" data-act="signature" data-uid="${k.uid}" data-id="${id}" title="${sig.desc}"><b>${sig.name}</b> <small>${sig.desc}</small></button>`);
+        }
+      }
+      if (canRename(k)) {
+        btns.push(`<span class="rename"><input type="text" maxlength="${NAME_MAX}" id="nm-${k.uid}" placeholder="Rename" aria-label="New name for ${k.name}"><button data-act="rename" data-uid="${k.uid}">Name it</button></span>`);
       }
       if (k.crafted && k.enchants.length < CARD_MATERIALS[k.cardMat].slots) {
         for (const e of enchInv.filter(e => !k.enchants.includes(e))) {
@@ -618,7 +637,7 @@ function deckTab() {
         <button data-act="toggleSalvage" ${run.salvagedHere ? 'disabled' : ''}>${salvageMode ? 'Cancel salvage' : run.salvagedHere ? 'Salvaged' : 'Salvage a card'}</button>
       </div>
       <p class="note">${salvageMode ? 'Pick a card to break down. You get back one of its ingredients at random.'
-        : 'Add monster parts to cards with a free enchantment slot. Mend worn paper and wood with the same material.'}</p>
+        : 'Add monster parts to cards with a free enchantment slot. Mend worn paper and wood with the same material. Cards you cast often become Well-Worn and can be renamed; Heirlooms get a signature.'}</p>
       <div class="cards">${deck}</div>
     </div>`;
 }
@@ -634,9 +653,10 @@ function campButtons() {
 
 function renderBench() {
   const isCamp = desk.type === 'camp';
-  const tabs = [['inscribe', 'Inscribe'], ['refine', 'Refine'], ['deck', 'Deck']]
+  const pending = run.deck.some(k => k.signaturePending);
+  const tabs = [['inscribe', 'Inscribe'], ['deck', pending ? 'Deck ✦' : 'Deck']]
     .map(([id, label]) => `<button role="tab" aria-selected="${benchTab === id}" class="tab${benchTab === id ? ' on' : ''}" data-act="tab" data-tab="${id}">${label}</button>`).join('');
-  const body = benchTab === 'refine' ? refineTab() : benchTab === 'deck' ? deckTab() : inscribeTab();
+  const body = benchTab === 'deck' ? deckTab() : inscribeTab();
   app.innerHTML = `
   <section class="bench">
     ${hintHtml(isCamp ? 'camp' : 'desk')}
@@ -1091,11 +1111,20 @@ const actions = {
 
   tab({ tab }) { benchTab = tab; notice = null; salvageMode = false; },
 
-  refine({ id }) {
-    const r = refine(run, id);
-    if (!r.error) sfx(id === 'bleed' ? 'hurt' : 'pickup');
-    notice = r.error ? { text: r.error, tone: 'warn' }
-      : { text: `Refined into ${Object.entries(r.made).map(([k, n]) => `${itemName(k)}${n > 1 ? ` ×${n}` : ''}`).join(', ')}.` };
+  signature({ uid, id }) {
+    const k = run.deck.find(c => c.uid === uid);
+    const r = k ? chooseSignature(k, id) : { error: 'No such card.' };
+    if (r.error) { notice = { text: r.error, tone: 'warn' }; return; }
+    sfx('discover');
+    notice = { text: `${k.name} is ${SIGNATURES[id].name} now. It is yours in a way no other card is.`, tone: 'rare' };
+  },
+  rename({ uid }) {
+    const k = run.deck.find(c => c.uid === uid);
+    const before = k?.name;
+    const r = k ? renameCard(k, document.getElementById(`nm-${uid}`)?.value) : { error: 'No such card.' };
+    if (r.error) { notice = { text: r.error, tone: 'warn' }; return; }
+    sfx('craft');
+    notice = { text: `${before} is now called ${k.name}.` };
   },
   pick({ kind, key }) {
     const bp = blueprint;
@@ -1121,9 +1150,10 @@ const actions = {
     const r = craftIntoDeck(run, blueprint);
     if (r.error) { notice = { text: r.error, tone: 'warn' }; return; }
     noteDiscovery(r);
+    if (r.bled) sfx('hurt');
     notice = r.discovered
       ? { text: `A true name surfaces: you discovered ${r.card.name}. It is written in your Grimoire.`, tone: 'rare' }
-      : { text: `${r.card.name} added to your deck.` };
+      : { text: `${r.card.name} added to your deck.${r.bled ? ` You wrote it in your own blood (${r.bled} HP).` : ''}` };
     blueprint = emptyBlueprint();
   },
   reinscribe({ uid, ench }) {

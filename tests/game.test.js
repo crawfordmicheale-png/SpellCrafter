@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { craftCard, validateBlueprint, findRecipe } from '../js/crafting.js';
 import { createCombat, playCard, endTurn } from '../js/combat.js';
-import { createRun, craftIntoDeck, salvageCard, refine, reinscribe, mend, descend, burnCard, resurface, rest, gainRelic as gainRelicFor, applyRewards, serializeRun, deserializeRun, enterNode, leaveDelve, campChoice, buyOil, currentNode } from '../js/run.js';
+import { createRun, craftIntoDeck, salvageCard, reinscribe, mend, descend, burnCard, resurface, rest, gainRelic as gainRelicFor, applyRewards, serializeRun, deserializeRun, enterNode, leaveDelve, campChoice, buyOil, currentNode } from '../js/run.js';
 import { generateMap, availableNodes } from '../js/overworld.js';
 import { generateRegion, findPath, step, isFloor, objectAt, lightRadius } from '../js/world.js';
 import { RECIPES, REGIONS } from '../js/data.js';
@@ -27,10 +27,12 @@ test('stone boosts power, gold ink adds cost', () => {
   assert.equal(c.durability, Infinity);
 });
 
-test('hybrid ink makes two weaker effects', () => {
+test('a second ink costs 1 more mana and keeps both effects at full strength', () => {
   const c = craftCard({ colors: ['red', 'blue'], inkMat: 'silver', cardMat: 'silver' });
   assert.equal(c.name, 'Silvered Storm');
-  assert.deepEqual(c.effects, [{ type: 'damage', amount: 4 }, { type: 'draw', amount: 1 }]);
+  assert.deepEqual(c.effects, [{ type: 'damage', amount: 6 }, { type: 'draw', amount: 2 }]);
+  assert.equal(c.cost, 2);
+  assert.equal(craftCard({ colors: ['red'], inkMat: 'silver', cardMat: 'silver' }).cost, 1);
 });
 
 test('enchantment slots are limited by card material', () => {
@@ -97,16 +99,75 @@ test('every recipe is craftable', () => {
   }
 });
 
-test('refining turns raw materials into ingredients', () => {
+test('finds are ready to use; slate, silver and gold are spent as you inscribe', async () => {
+  const { addItem } = await import('../js/run.js');
   const run = createRun(1);
-  assert.equal(refine(run, 'charcoal').error, undefined);
+  assert.deepEqual(addItem(run, 'raw_ash'), ['ink_charcoal', 'ink_charcoal']);
   assert.equal(run.inventory.raw_ash, undefined);
-  assert.equal(run.inventory.ink_charcoal, 4);
-  assert.ok(refine(run, 'silverCard').error);
-  const hp = run.hp;
-  refine(run, 'bleed');
+  assert.equal(run.inventory.ink_charcoal, 6);
+  assert.deepEqual(addItem(run, 'raw_silver', 3), ['raw_silver', 'raw_silver', 'raw_silver']);
+  // Silver ore pays for a silver card (two) and silver ink (one).
+  run.inventory.ink_silver = 0;
+  const { card, error } = craftIntoDeck(run, { colors: ['red'], inkMat: 'silver', cardMat: 'silver' });
+  assert.equal(error, undefined);
+  assert.equal(card.cardMat, 'silver');
+  assert.equal(run.inventory.raw_silver, undefined);
+  // Blood ink can always be had, at a price.
+  Object.assign(run.inventory, { color_red: 1, mat_paper: 1 });
+  const hp = run.hp, corruption = run.corruption;
+  const r = craftIntoDeck(run, { colors: ['red'], inkMat: 'blood', cardMat: 'paper' });
+  assert.equal(r.bled, 6);
   assert.equal(run.hp, hp - 6);
-  assert.equal(run.inventory.ink_blood, 1);
+  assert.equal(run.corruption, corruption + 3);
+  run.hp = 5;
+  Object.assign(run.inventory, { color_red: 1, mat_paper: 1 });
+  assert.match(craftIntoDeck(run, { colors: ['red'], inkMat: 'blood', cardMat: 'paper' }).error, /too weak/);
+  // Two slate mend a stone card.
+  Object.assign(run.inventory, { color_red: 1, raw_slate: 2 });
+  run.hp = 50;
+  const stone = craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'stone' }).card;
+  assert.ok(stone);
+  assert.equal(run.inventory.raw_slate, undefined);
+});
+
+test('the desk hints when you are one part from a named spell', async () => {
+  const { recipeHint } = await import('../js/crafting.js');
+  let h = recipeHint({ colors: ['blue'], inkMat: 'silver', cardMat: 'wood', enchants: [] });
+  assert.equal(h.recipe.id, 'clarity');
+  assert.equal(h.kind, 'card');
+  assert.equal(h.change, 'swap');
+  h = recipeHint({ colors: ['red'], inkMat: 'silver', cardMat: 'stone', enchants: [] });
+  assert.equal(h.recipe.id, 'bellstrike');
+  assert.equal(h.kind, 'ench');
+  assert.equal(recipeHint({ colors: ['blue'], inkMat: 'silver', cardMat: 'silver', enchants: [] }), null);
+  assert.equal(recipeHint({ colors: ['green'], inkMat: 'charcoal', cardMat: 'paper', enchants: [] }), null);
+  for (const r of RECIPES) {
+    const parts = r.match.colors.length + 2 + (r.match.enchants || []).length;
+    assert.ok(parts <= 4, `${r.id} has ${parts} parts`);
+  }
+});
+
+test('heirlooms take a signature, and well-worn cards can be renamed', async () => {
+  const { recordCast, chooseSignature, renameCard } = await import('../js/crafting.js');
+  const run = createRun(30);
+  const { card } = craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'wood' });
+  assert.ok(renameCard(card, 'Old Faithful').error);
+  for (let i = 0; i < 8; i++) recordCast(card);
+  assert.equal(renameCard(card, '  Old <b>Faithful</b>  ').card.name, 'Old bFaithful/b');
+  renameCard(card, 'Old Faithful');
+  assert.ok(chooseSignature(card, 'unfading').error);
+  for (let i = 0; i < 12; i++) recordCast(card);
+  assert.ok(card.signaturePending);
+  const dmg = card.effects[0].amount;
+  chooseSignature(card, 'resonant');
+  assert.equal(card.effects[0].amount, dmg + 3);
+  assert.ok(!card.signaturePending);
+  // Re-inscribing keeps the name and the signature.
+  card.durability = 3;
+  reinscribe(run, card.uid, 'volatile');
+  assert.equal(card.name, 'Old Faithful');
+  assert.equal(card.signature, 'resonant');
+  assert.equal(card.effects[0].amount, 9 + 3 + 3); // volatile 9, worn +3, resonant +3
 });
 
 test('re-inscribing rebuilds the card with the new enchantment', () => {
@@ -434,7 +495,7 @@ test('pristine spots and essence make stronger cards', async () => {
   const run = createRun(6);
   const node = { raw: 'bone', amount: 1, pristine: true };
   const r = scavenge(run, node);
-  assert.equal(run.inventory.raw_bone, 3);
+  assert.equal(run.inventory.color_white, 4);
   assert.equal(run.inventory.ess_pristine, 1);
   assert.ok(r.pristine);
   Object.assign(run.inventory, { color_red: 1, mat_wood: 1 });

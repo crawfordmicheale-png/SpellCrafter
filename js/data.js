@@ -8,16 +8,12 @@ export const INK_COLORS = {
   black: { name: 'Grave Ink',   short: 'Black', noun: 'Blight',  effect: 'poison', base: 3, hue: '#6b4f7a', desc: 'Applies Poison' },
 };
 
-// Two inks mixed together make a hybrid: both effects at HYBRID_FACTOR strength.
-export const HYBRID_FACTOR = 0.6;
-export const HYBRID_NOUNS = {
-  'blue+red': 'Storm', 'red+white': 'Brand', 'green+red': 'Cautery', 'black+red': 'Hexfire',
-  'blue+white': 'Aegis', 'blue+green': 'Tide', 'black+blue': 'Nightmare',
-  'green+white': 'Sanctuary', 'black+white': 'Shroud', 'black+green': 'Rot',
-};
+// One rule for mixing: a card can carry a second ink for +1 mana. Both effects stay at
+// full strength, and the card sets off that pair's reaction every time it is cast.
+export const SECOND_INK_COST = 1;
 
 // Ink reactions: casting a card right after one of a different color, or casting
-// a hybrid card, sets off the reaction for that pair. Names match the hybrid inks.
+// a two-ink card, sets off the reaction for that pair. Two-ink cards are named after it.
 export const REACTIONS = {
   'blue+red':    { name: 'Storm',     desc: 'Draw 1 card.', effects: [{ type: 'draw', amount: 1 }] },
   'red+white':   { name: 'Brand',     desc: 'Deal damage equal to half your Block.', effects: [{ type: 'brand' }] },
@@ -49,20 +45,20 @@ export const RELIC_PRICE = 70;
 export const CHEST_RELIC_CHANCE = 0.15;
 
 export const INK_MATERIALS = {
-  charcoal: { name: 'Charcoal', adj: 'Ashen',    mult: 0.75, extraCost: 0, hpCost: 0, desc: 'x0.75 power. Cheap.' },
-  silver:   { name: 'Silver',   adj: 'Silvered', mult: 1.0,  extraCost: 0, hpCost: 0, purify: true, desc: 'x1 power. Removes 1 debuff from you.' },
-  gold:     { name: 'Gold',     adj: 'Gilded',   mult: 1.5,  extraCost: 1, hpCost: 0, desc: 'x1.5 power. +1 cost.' },
-  blood:    { name: 'Blood',    adj: 'Sanguine', mult: 2.0,  extraCost: 0, hpCost: 3, desc: 'x2 power. Costs 3 HP to cast.' },
-  // Rare inks, refined from what elites and wraiths leave behind.
-  ichor:      { name: 'Ichor',      adj: 'Ichorous', mult: 1.75, extraCost: 0,  hpCost: 0, corrupts: 1, desc: 'x1.75 power. +1 Corruption each cast.' },
-  ghostlight: { name: 'Ghostlight', adj: 'Ghostlit', mult: 1.0,  extraCost: -1, hpCost: 0, desc: 'x1 power. Costs 1 less.' },
+  charcoal: { name: 'Charcoal', adj: 'Ashen',    mult: 0.75, extraCost: 0, hpCost: 0, desc: 'Weaker, but common.' },
+  silver:   { name: 'Silver',   adj: 'Silvered', mult: 1.0,  extraCost: 0, hpCost: 0, purify: true, desc: 'Full strength. Cleanses a debuff from you.' },
+  gold:     { name: 'Gold',     adj: 'Gilded',   mult: 1.5,  extraCost: 1, hpCost: 0, desc: 'Half again as strong. +1 mana.' },
+  blood:    { name: 'Blood',    adj: 'Sanguine', mult: 2.0,  extraCost: 0, hpCost: 3, desc: 'Twice as strong. Costs 3 HP to cast.' },
+  // Rare inks, from what elites and wraiths leave behind.
+  ichor:      { name: 'Ichor',      adj: 'Ichorous', mult: 1.75, extraCost: 0,  hpCost: 0, corrupts: 1, desc: 'Nearly twice as strong. Corrupts you each cast.' },
+  ghostlight: { name: 'Ghostlight', adj: 'Ghostlit', mult: 1.0,  extraCost: -1, hpCost: 0, desc: 'Full strength. Costs 1 less.' },
 };
 
 // durability: uses across the whole run (Infinity = permanent)
 export const CARD_MATERIALS = {
   paper:  { name: 'Paper',  cost: 0, durability: 3,        slots: 0, desc: '0 cost. Burns after 3 casts.' },
   wood:   { name: 'Wood',   cost: 1, durability: 8,        slots: 1, desc: 'Lasts 8 casts. 1 enchantment.' },
-  stone:  { name: 'Stone',  cost: 2, durability: Infinity, slots: 1, powerMult: 1.5, desc: 'Permanent. x1.5 power, but costs 2.' },
+  stone:  { name: 'Stone',  cost: 2, durability: Infinity, slots: 1, powerMult: 1.5, desc: 'Permanent. Half again as strong, but costs 2.' },
   silver: { name: 'Silver', cost: 1, durability: Infinity, slots: 2, desc: 'Permanent. 2 enchantments.' },
   gold:   { name: 'Gold',   cost: 1, durability: Infinity, slots: 3, goldOnCast: 2, desc: 'Permanent. 3 enchantments. +2 gold per cast.' },
 };
@@ -97,26 +93,28 @@ export const RAW_MATERIALS = {
   wisp:      { name: 'Ghostlight Wisp', node: null,             color: '#9fd8e0', rarity: 'uncommon' },
 };
 
-// Refining turns raw materials into crafting ingredients. Some raws have a choice.
-export const REFINING = [
-  { id: 'charcoal',   from: { raw_ash: 1 },       to: { ink_charcoal: 2 } },
-  { id: 'white',      from: { raw_bone: 1 },      to: { color_white: 1 } },
-  { id: 'paper',      from: { raw_rags: 1 },      to: { mat_paper: 2 } },
-  { id: 'wood',       from: { raw_timber: 1 },    to: { mat_wood: 1 } },
-  { id: 'black',      from: { raw_gravesoil: 1 }, to: { color_black: 1 } },
-  { id: 'red',        from: { raw_bloodroot: 1 }, to: { color_red: 1 } },
-  { id: 'blue',       from: { raw_kelp: 1 },      to: { color_blue: 1 } },
-  { id: 'green',      from: { raw_moss: 1 },      to: { color_green: 1 } },
-  { id: 'stone',      from: { raw_slate: 2 },     to: { mat_stone: 1 } },
-  { id: 'silverInk',  from: { raw_silver: 1 },    to: { ink_silver: 1 } },
-  { id: 'silverCard', from: { raw_silver: 2 },    to: { mat_silver: 1 } },
-  { id: 'goldInk',    from: { raw_gold: 1 },      to: { ink_gold: 1 } },
-  { id: 'goldCard',   from: { raw_gold: 2 },      to: { mat_gold: 1 } },
-  { id: 'bloodInk',   from: { raw_heart: 1 },     to: { ink_blood: 2 } },
-  { id: 'ichorInk',   from: { raw_ichor: 1 },     to: { ink_ichor: 1 } },
-  { id: 'ghostInk',   from: { raw_wisp: 1 },      to: { ink_ghostlight: 1 } },
-  { id: 'bleed',      from: {}, hpCost: 6,        to: { ink_blood: 1 } },
-];
+// What you pick up is ready to use. Most finds turn straight into ingredients.
+// Slate, silver and gold stay as they are: you decide what they become when you inscribe.
+export const PICKUP = {
+  raw_ash: { ink_charcoal: 2 },
+  raw_bone: { color_white: 1 },
+  raw_rags: { mat_paper: 2 },
+  raw_timber: { mat_wood: 1 },
+  raw_gravesoil: { color_black: 1 },
+  raw_bloodroot: { color_red: 1 },
+  raw_kelp: { color_blue: 1 },
+  raw_moss: { color_green: 1 },
+  raw_heart: { ink_blood: 2 },
+  raw_ichor: { ink_ichor: 1 },
+  raw_wisp: { ink_ghostlight: 1 },
+};
+
+// Other ways to pay for a blueprint slot, tried after the ready-made item.
+// `hp` is paid in your own blood.
+export const ALT_SOURCES = {
+  cardMat: { stone: { raw_slate: 2 }, silver: { raw_silver: 2 }, gold: { raw_gold: 2 } },
+  inkMat: { silver: { raw_silver: 1 }, gold: { raw_gold: 1 }, blood: { hp: 6 } },
+};
 
 // Every ingredient in the game, keyed by inventory id.
 export const INGREDIENTS = {};
@@ -126,6 +124,9 @@ for (const [k, v] of Object.entries(CARD_MATERIALS)) INGREDIENTS[`mat_${k}`]   =
 for (const [k, v] of Object.entries(ENCHANTMENTS))   INGREDIENTS[`ench_${k}`]  = { kind: 'enchant', key: k, name: v.part, rarity: 'uncommon' };
 for (const [k, v] of Object.entries(RAW_MATERIALS))  INGREDIENTS[`raw_${k}`]   = { kind: 'raw',     key: k, name: v.name, rarity: v.rarity };
 
+INGREDIENTS.raw_slate.hint = 'Two make a Stone Card.';
+INGREDIENTS.raw_silver.hint = 'One makes Silver Ink, two make a Silver Card.';
+INGREDIENTS.raw_gold.hint = 'One makes Gold Ink, two make a Gold Card.';
 INGREDIENTS.ess_pristine = { kind: 'essence', key: 'pristine', name: 'Pristine Essence', rarity: 'rare' };
 
 // Glinting scavenge spots give double materials and a Pristine Essence.
@@ -137,6 +138,15 @@ export const WEAR = [
   { casts: 8,  bonus: 1, name: 'Well-Worn' },
   { casts: 20, bonus: 2, name: 'Heirloom' },
 ];
+
+// When a card becomes an Heirloom, you choose its signature at a desk.
+// Well-Worn and Heirloom cards can also be renamed.
+export const SIGNATURES = {
+  weightless: { name: 'Weightless', desc: 'Costs 1 less (never below 0).' },
+  unfading:   { name: 'Unfading',   desc: 'Never wears out.' },
+  resonant:   { name: 'Resonant',   desc: '+3 to its damage, Block, healing and Poison.' },
+};
+export const NAME_MAX = 24;
 
 // Corruption builds from blood and ichor. Tainted: Black and Blood cards hit harder,
 // but you start fights Weak. Forsaken: forbidden recipes open, but enemies grow stronger.
@@ -150,7 +160,8 @@ export const REPAIR_PRICE = 20;
 export const BENCH_REST_HEAL = 0.3; // fraction of max HP, once per desk
 
 // Named spells. Matching colors + ink material + card material (and any listed
-// enchantments) replaces the formula with a fixed, stronger effect.
+// enchantments) replaces the formula with a fixed, stronger effect. No recipe
+// needs more than four parts, and the desk hints when you are one part away.
 export const RECIPES = [
   {
     id: 'pact', name: 'Pact of Ruin',
@@ -183,9 +194,9 @@ export const RECIPES = [
   },
   {
     id: 'bellstrike', name: 'Bellstrike',
-    match: { colors: ['red', 'white'], inkMat: 'silver', cardMat: 'stone', enchants: ['echo'] },
+    match: { colors: ['red'], inkMat: 'silver', cardMat: 'stone', enchants: ['echo'] },
     effects: [{ type: 'damage', amount: 10 }, { type: 'block', amount: 10 }],
-    hint: 'A branded stone, silvered, that rings twice.',
+    hint: 'Crimson on stone, silvered, that rings twice.',
     flavor: 'The chapel bell still tolls for someone.',
   },
   {
@@ -204,16 +215,16 @@ export const RECIPES = [
   },
   {
     id: 'litany', name: "Saint's Litany",
-    match: { colors: ['green', 'white'], inkMat: 'silver', cardMat: 'silver', enchants: ['hallowed'] },
+    match: { colors: ['white'], inkMat: 'silver', cardMat: 'silver', enchants: ['hallowed'] },
     effects: [{ type: 'block', amount: 12 }, { type: 'heal', amount: 5 }],
-    hint: 'A sanctuary, silvered twice, blessed by a saint.',
+    hint: 'Bone ink, silvered twice, blessed by a saint.',
     flavor: 'Said over every body in the catacombs. None of them stayed down.',
   },
   {
     id: 'needlestorm', name: 'Needlestorm',
-    match: { colors: ['black', 'red'], inkMat: 'blood', cardMat: 'wood', enchants: ['piercing'] },
+    match: { colors: ['black'], inkMat: 'blood', cardMat: 'wood', enchants: ['piercing'] },
     effects: [{ type: 'damage', amount: 6 }, { type: 'damage', amount: 6 }, { type: 'poison', amount: 3 }],
-    hint: 'Hexfire in blood, stitched through wood with a needle.',
+    hint: 'Grave ink in blood, stitched through wood with a needle.',
     flavor: 'The weaver never misses the same place twice.',
   },
   {
@@ -255,11 +266,11 @@ export const STARTER_CARDS = {
 export const STARTER_DECK = ['strike', 'strike', 'strike', 'strike', 'strike', 'guard', 'guard', 'guard', 'guard', 'scribble'];
 
 export const STARTING_INVENTORY = {
-  color_red: 1, color_white: 1,
-  ink_charcoal: 2, ink_silver: 1,
+  color_red: 1, color_white: 2,
+  ink_charcoal: 4, ink_silver: 1,
   mat_paper: 2, mat_wood: 1,
   ench_volatile: 1,
-  raw_bone: 1, raw_gravesoil: 1, raw_ash: 1,
+  color_black: 1,
 };
 
 export const PLAYER_START = { hp: 60, maxHp: 60, gold: 30, energy: 3, handSize: 5 };
@@ -702,7 +713,7 @@ export const VARIANTS = {
     name: 'The Ash Monk', swap: 'ash',
     desc: 'Starts with extra charcoal and wood and begins every fight with 4 Block. Carries little gold.',
     unlock: { type: 'grimoire', value: 3, text: 'Know 3 spells in your Grimoire' },
-    start: { gold: 10, inventory: { ink_charcoal: 3, mat_wood: 2, raw_ash: 2 }, perks: ['openingBlock'] },
+    start: { gold: 10, inventory: { ink_charcoal: 7, mat_wood: 2 }, perks: ['openingBlock'] },
   },
   heretic: {
     name: 'The Gilded Heretic', swap: 'gilt',
@@ -715,8 +726,8 @@ export const VARIANTS = {
 // Tips for a first run. Each shows once, and the player can turn them all off.
 export const HINTS = {
   map: 'Choose where to go next. Delves are dungeons full of materials and wandering monsters. The guardian of the act waits at the top. Follow the lines.',
-  explore: 'Tap a tile or use WASD to walk. The writing desk is close by: that is where you refine and craft. Scavenge the marked spots, then find the way out.',
-  desk: 'Refine raw materials on the Refine tab first. Then Inscribe a card: pick a card material, an ink color and an ink material. Monster parts add enchantments.',
+  explore: 'Tap a tile or use WASD to walk. The writing desk is close by: that is where you craft. Scavenge the marked spots, then find the way out.',
+  desk: 'Inscribe a card: pick a card material, an ink color and an ink material. A second ink costs 1 more mana. Monster parts add enchantments. If the ink stirs, you are one part away from a named spell.',
   fight: 'You get 3 mana each turn, and enemies show what they will do next. Cast crafted cards of different inks back to back to set off reactions.',
   lantern: 'Your lantern is running low and the dark is closing in. Burn a card for oil, or climb back to the surface from the stairs up.',
   corruption: 'Blood and ichor are corrupting you. At 5 you are Tainted, at 10 Forsaken. Rest at desks or pray at shrines to cleanse it.',

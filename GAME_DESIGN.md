@@ -28,7 +28,7 @@ Act map: pick a node ──→ Delve: scavenge, fight what finds you, craft at t
 1. Each act has a branching **map**, like Slay the Spire. Pick the next node along the lines.
 2. Most nodes are **delves**: small top-down dungeons explored by lantern light. Scavenge **raw materials**, open reliquaries, and find the way out.
 3. Wandering builds **Dread**, and random encounters get more likely. Monsters drop **monster parts**, which are enchantments.
-4. At a delve's **writing desk**, refine raws into ingredients, craft new cards, add enchantments to existing cards and mend worn ones.
+4. At a delve's **writing desk**, craft new cards, add enchantments to existing cards, mend worn ones, and give your favorites names and signatures.
 5. Other nodes are events, merchants, scriptoria (rest or refuel) and meetings with **Sister Vell**.
 6. Beat the act's guardian at the top of the map and descend. The fourth act ends with the Unbound Grimoire.
 7. Die → run ends. Discovered recipes carry over.
@@ -61,10 +61,9 @@ Every crafted card needs four components:
 | Blue | Draw cards | 1 card per 3 value (rounded) |
 | Green | Heal / Regen | 3 heal |
 | Black | Apply Curse (Weak / Poison) | 3 stacks |
-| Violet *(mixed: Red + Blue)* | Damage + draw | 4 dmg + 1 draw |
-| Amber *(mixed: Red + White)* | Damage + block | 3 dmg + 3 block |
-
-> **Ink mixing:** Combine two inks at the bench to make a hybrid color. Hybrids are weaker per effect but more flexible.
+> **A second ink:** any card can carry two ink colors. The second ink costs **+1 mana**; both effects stay at full strength, and the card sets off that pair's reaction (6.5) every time it is cast. Two-ink cards are named after their reaction (Ashen Brand, Silvered Storm).
+>
+> Cards always show their final numbers ("Deal 9 damage"). The multipliers below are for tuning, not for the player.
 
 ### 3.2 Ink Materials: *how strong the card is and at what price*
 
@@ -120,20 +119,24 @@ Each delve is a top-down dungeon with fog of war and a lantern radius. Scavenge 
 
 Reliquary boxes (chests) hold gold plus rare raws or monster parts. The elite guards a room and drops rare materials, including **Heartblood**.
 
-### 4.2 Refining (at a writing desk)
-Raw materials must be refined before they can be crafted. Some refining is a real choice.
+### 4.2 Picking things up
+There is no refining step. What you scavenge is ready to use the moment you pick it up.
 
-| Raw | Becomes |
+| Find | Becomes |
 |---|---|
 | Ash | Charcoal Ink ×2 |
-| Bone Shards / Bloodroot / Drowned Kelp / Grave Moss / Grave Soil | White / Red / Blue / Green / Black ink |
+| Bone Shards / Bloodroot / Drowned Kelp / Grave Moss / Grave Soil | Bone / Crimson / Drowned / Moss / Grave ink |
 | Rotten Vestments | Paper Card ×2 |
 | Old Timber | Wood Card |
-| Slate ×2 | Stone Card |
-| Silver Ore | Silver Ink, **or** 2 ore → Silver Card |
-| Gold Leaf | Gold Ink, **or** 2 leaf → Gold Card |
 | Heartblood | Blood Ink ×2 |
-| *6 of your own HP* | Blood Ink (always available) |
+| Ichor, Ghostlight Wisp | Ichor Ink, Ghostlight Ink |
+| Slate | Stays as Slate: **2 make a Stone Card** when you inscribe |
+| Silver Ore | Stays as ore: **1 makes Silver Ink, 2 make a Silver Card**, decided when you inscribe |
+| Gold Leaf | Stays as leaf: **1 makes Gold Ink, 2 make a Gold Card**, decided when you inscribe |
+| *6 of your own HP* | Blood Ink, always available at the desk (+1 Corruption) |
+
+- The desk spends ready-made items first, then slate, ore or leaf, then your blood.
+- Mending a stone, silver or gold card can also be paid with 2 slate, ore or leaf.
 
 ### 4.3 Random encounters and Dread
 - Every step on open floor adds 1 **Dread**. After a short grace period, each step has a chance to trigger a fight: 2% + 0.03% per Dread, capped at 9%.
@@ -172,7 +175,7 @@ Each floor has 1–2 events, marked on the map with a purple glow. Every event o
 | The Ink-Stained Altar | Offer a starter card: lose it, gain a relic. Offer blood: lose 10 HP, gain Ichor and a Pristine Essence. |
 
 ### 4.6 Merchant
-- A node on the map. Sells raws, refined ingredients, monster parts and lantern oil. Prices are set by rarity.
+- A node on the map. Sells ingredients, slate, ore, gold leaf, monster parts and lantern oil. Prices are set by rarity.
 - **Repair** a worn card for gold.
 
 ### 4.7 Salvage and breakage
@@ -203,23 +206,25 @@ Some exact combinations make **named spells** with unique effects beyond the for
 | Blue + Silver + Silver material | **Clarity:** Draw 3, your next card costs 0 |
 | Red + Blood + Paper | **Kindling:** Deal 10 to ALL enemies (still costs 3 HP) |
 | Green + Gold + Wood | **Evergreen:** Heal 6, gain 4 Block; this card never loses durability |
-| Red + White + Silver ink + Stone + Echo | **Bellstrike:** Deal 10, gain 10 Block (echoes) |
+| Red + Silver ink + Stone + Echo | **Bellstrike:** Deal 10, gain 10 Block (echoes) |
 | Black + Blue + Blood + Silver card | **Mind Leech:** Apply 9 Poison, draw 2 |
 | Black + Green + Charcoal + Wood | **Gravebloom:** Apply 5 Poison, heal 4 |
-| Green + White + Silver ink + Silver card + Hallowed | **Saint's Litany:** Gain 12 Block, heal 5 |
-| Black + Red + Blood + Wood + Piercing | **Needlestorm:** Deal 6 twice, apply 3 Poison (ignores Block) |
+| White + Silver ink + Silver card + Hallowed | **Saint's Litany:** Gain 12 Block, heal 5 |
+| Black + Blood + Wood + Piercing | **Needlestorm:** Deal 6 twice, apply 3 Poison (ignores Block) |
 | Blue + White + Charcoal + Paper | **Drowned Hymn:** Draw 2, gain 5 Block |
 | Red + Gold ink + Gold card | **Ember Rite:** Deal 9 to ALL enemies |
 
-- Recipes are hidden until you craft them the first time, then saved to a **Grimoire** (per run in the prototype; persistent across runs is planned).
+- No recipe needs more than **four parts** (counting each ink color, the ink material, the card material and each enchantment).
+- Recipes are hidden until you craft them the first time, then saved to the **Grimoire**, which persists across runs.
+- **The ink stirs.** When your blueprint is exactly one part away from a recipe (one part missing, or one part of the wrong kind), the desk says so and says what kind of part: another ink, a different ink material, a different page, or something from a monster. A known recipe is named; an unknown one is not.
 - Re-inscribing an existing card can complete a recipe that needs an enchantment (Bellstrike).
-- Hint scrolls found in runs reveal partial recipes ("…Black ink and Blood…").
+- The Grimoire shows a riddle for every unknown recipe.
 
 ---
 
 ## 6.5 Ink Reactions
 
-Casting an **inscribed** card right after one of a different ink sets off the reaction for that pair. A two-ink (hybrid) card always sets off its own reaction. Starter cards are plain ink: they never react and don't break a chain. Cards in hand that would react glow and show the reaction's name.
+Casting an **inscribed** card right after one of a different ink sets off the reaction for that pair. A two-ink card always sets off its own reaction. Starter cards are plain ink: they never react and don't break a chain. Cards in hand that would react glow and show the reaction's name.
 
 | Inks | Reaction | Effect |
 |---|---|---|
@@ -250,6 +255,16 @@ This makes the order you cast in matter, and rewards crafting cards in inks that
 **Pristine finds.** 12% of scavenge spots glint. They give double materials and a **Pristine Essence**. Add the essence in the desk's Catalyst slot to make a Pristine card (×1.3 power).
 
 **Cards grow with use.** Every crafted card counts its casts across the run. At 8 casts it becomes **Well-Worn** (+1 to damage, Block, healing and Poison); at 20 it becomes an **Heirloom** (+2 more). Re-inscribing keeps the wear.
+
+**Signatures and names.** Well-Worn and Heirloom cards can be renamed at any desk (up to 24 characters). When a card becomes an Heirloom, the desk's Deck tab offers one **signature**, chosen once:
+
+| Signature | Effect |
+|---|---|
+| Weightless | Costs 1 less (never below 0) |
+| Unfading | Never wears out |
+| Resonant | +3 to its damage, Block, healing and Poison |
+
+Re-inscribing keeps the name and the signature. The point is attachment: a few cards you made, named and shaped, rather than more rules to learn.
 
 **Corruption.** Builds from crafting with Blood ink (+2), bleeding at the desk (+1), and casting Ichor cards (+1 each). Resting at a desk lifts 2; praying at a Candle Shrine lifts up to 3.
 
@@ -353,9 +368,8 @@ Skipping her counts against her: nobody helped.
 ### 8.1 Writing desk actions
 | Tab | What you can do |
 |---|---|
-| Inscribe | Craft a new card from refined ingredients (live preview) |
-| Refine | Turn raw materials into ingredients, or bleed for Blood Ink |
-| Deck | Re-inscribe (add a monster part to a card with a free slot), Mend (restore a worn card using its material), Salvage |
+| Inscribe | Craft a new card (live preview, recipe hints, blood ink on demand) |
+| Deck | Re-inscribe (add a monster part to a card with a free slot), Mend (restore a worn card using its material), Salvage, Rename, choose a Signature |
 
 ---
 
@@ -421,4 +435,5 @@ Decided: random encounters stay as they are (driven by Dread). Lantern oil is in
 8. ~~Unlockable Inkbinders, rare inks, pristine finds, card wear, Corruption and forbidden recipes~~ (done)
 9. ~~More events, floor guardians with boss phases, new elites, polish (screen shake, particles, guided first run)~~ (done)
 10. ~~Overworld act maps with branching paths, smaller delves, scriptoria, and the Sister Vell storyline~~ (done)
-11. Next: simplify crafting, playtesting feedback.
+11. ~~Simpler crafting: no refining, one rule for a second ink, recipe hints, four-part recipes, signatures and names~~ (done)
+12. Next: playtesting feedback.
