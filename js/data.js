@@ -431,6 +431,17 @@ export const ENEMIES = {
     ],
     drops: ['ench_echo', 'ench_hallowed', 'raw_ichor', 'raw_gold', 'raw_wisp', 'raw_wisp'],
   },
+  vellHollow: {
+    name: 'Vell, Hollowed', hp: 58, elite: true,
+    desc: 'Sister Vell, or the ink that wears her. It writes with her hands now.',
+    moves: [
+      { actions: [{ type: 'attack', amount: 7 }, { type: 'debuff', status: 'poison', amount: 3 }] },
+      { actions: [{ type: 'block', amount: 10 }, { type: 'buff', status: 'strength', amount: 2 }] },
+      { actions: [{ type: 'attack', amount: 4, times: 3 }] },
+      { actions: [{ type: 'debuff', status: 'weak', amount: 2 }, { type: 'attack', amount: 8 }] },
+    ],
+    drops: ['raw_ichor', 'raw_ichor', 'raw_wisp', 'ess_pristine', 'ench_bound'],
+  },
   grimoire: {
     name: 'The Unbound Grimoire', hp: 110, boss: true,
     desc: 'The first book. It has been waiting for a new hand to hold it.',
@@ -455,50 +466,78 @@ export const ENEMIES = {
   },
 };
 
-// Each region is a procedurally generated dungeon floor.
-// `raws` weights what the scavenge spots hold.
+// Each region is one act: a branching map of delves, events, shops and camps,
+// with its guardian at the top. `raws` weights what the scavenge spots hold.
 export const REGIONS = [
   {
     name: 'The Chapel Ruins',
     intro: 'Pews split for firewood. Bones in every niche. Somewhere below, a bell.',
     raws: { ash: 3, bone: 3, rags: 2, timber: 2, gravesoil: 2, bloodroot: 2, moss: 1 },
-    nodes: 13, chests: 2,
     encounters: [['acolyte'], ['gravemoth', 'gravemoth'], ['gravemoth'], ['acolyte', 'gravemoth']],
-    elite: 'gravedigger', guardian: 'warden', merchant: true, hpMult: 1, events: 1,
+    elites: ['gravedigger'], guardian: 'warden', hpMult: 1,
     tiles: { 1: '#2b2430', 2: '#352c3c', 3: '#1d1822', 4: '#4f7a45', 5: '#4a3f50', 6: '#6b5a74', 7: '#2a2230', 8: '#1f1a24', 9: '#231c28' },
   },
   {
     name: 'The Drowned Archive',
     intro: 'The river took the library a century ago. The scribes never stopped working.',
     raws: { kelp: 3, moss: 2, slate: 2, silver: 2, rags: 2, bloodroot: 1, bone: 1 },
-    nodes: 14, chests: 2,
     encounters: [['drowned'], ['drowned', 'gravemoth'], ['hound'], ['ghoul']],
-    elite: 'abbot', guardian: 'scrivener', merchant: true, hpMult: 1.1, events: 2,
+    elites: ['abbot'], guardian: 'scrivener', hpMult: 1.1,
     tiles: { 1: '#1f2a30', 2: '#27363d', 3: '#141c21', 4: '#3f7a6f', 5: '#3a4d56', 6: '#557582', 7: '#1f2c33', 8: '#162027', 9: '#18242a' },
   },
   {
     name: 'The Catacombs',
     intro: 'The dead here were buried standing up, facing the stair. They are still waiting for someone to come down it.',
     raws: { bone: 3, gravesoil: 3, ash: 2, slate: 2, silver: 1, moss: 1, timber: 1 },
-    nodes: 13, chests: 2,
     encounters: [['wraith'], ['boneweaver'], ['wraith', 'acolyte'], ['boneweaver', 'gravemoth']],
-    elite: 'choirmaster', guardian: 'saint', merchant: true, hpMult: 1.2, events: 2,
+    elites: ['choirmaster'], guardian: 'saint', hpMult: 1.2,
     tiles: { 1: '#2a2826', 2: '#34312d', 3: '#1a1816', 4: '#6b6a4a', 5: '#4d4944', 6: '#79736a', 7: '#2a2724', 8: '#1e1c1a', 9: '#22201e' },
   },
   {
     name: 'The Last Library',
     intro: 'Every book here was written by an Inkbinder. Most of them are still screaming.',
     raws: { gold: 2, silver: 2, bloodroot: 2, gravesoil: 2, bone: 1, slate: 1, kelp: 1 },
-    nodes: 12, chests: 3,
     encounters: [['hound', 'ghoul'], ['inkling', 'inkling'], ['ghoul', 'gravemoth', 'gravemoth'], ['inkling', 'wraith'], ['boneweaver', 'inkling']],
-    elite: null, boss: 'grimoire', merchant: false, hpMult: 1.3, events: 1,
+    elites: ['gravedigger', 'abbot', 'choirmaster'], guardian: null, boss: 'grimoire', hpMult: 1.3,
     tiles: { 1: '#2e2320', 2: '#392b26', 3: '#1e1614', 4: '#8a6a2a', 5: '#523a2e', 6: '#7a5840', 7: '#2e201a', 8: '#221814', 9: '#241915' },
   },
 ];
 
+// Size of one delve. A haunted delve has an elite on the way out, and more to find.
+export const DELVE = {
+  plain: { rooms: 7, nodes: 8, chests: 1 },
+  haunted: { rooms: 8, nodes: 11, chests: 2 },
+  eventChance: 0.35,
+  leaveDread: 0.5, // Dread is multiplied by this when you climb out
+};
+
+// The overworld map for each act.
+export const MAP = {
+  rows: 8,          // 6 rows of choices, a camp row, then the guardian
+  cols: 5,
+  paths: 4,
+  // weights for the choice rows; row 0 is always a delve
+  weights: { delve: 40, unknown: 30, haunted: 12, shop: 10, camp: 8 },
+  // what an unknown node turns out to be
+  unknown: { ambush: 0.15, cache: 0.12 },
+};
+
+export const NODE_TYPES = {
+  delve: { name: 'Delve', sprite: 'stairsDown', desc: 'A dungeon. Scavenge, craft at its desk, and find the way out. Things wander in the dark.' },
+  haunted: { name: 'Haunted delve', sprite: 'skull', desc: 'A deeper dungeon with more to find. An elite guards the way out and keeps a relic.' },
+  unknown: { name: 'Unknown', sprite: 'unknown', desc: 'Usually an event. Sometimes a cache. Sometimes something waiting.' },
+  shop: { name: 'Merchant', sprite: 'merchant', desc: 'Ingredients, lantern oil, repairs and the odd relic.' },
+  camp: { name: 'Scriptorium', sprite: 'desk', desc: 'Craft, then either rest or refill your lantern.' },
+  story: { name: 'Sister Vell', sprite: 'vell', desc: 'The Inkbinder who went down before you.' },
+  guardian: { name: 'Guardian', sprite: null, desc: 'The guardian of this act. Beat it to go deeper.' },
+};
+
+export const CAMP = { heal: 0.3, dread: 30, corruption: 2 };
+export const OIL_WARE = { oil: 40, price: 15 };
+
 // Random encounters: chance per step on open floor.
 export const ENCOUNTER = { graceSteps: 12, base: 0.02, perDread: 0.0003, max: 0.09, dreadPerStep: 1 };
-export const DESCEND_HEAL = 0.2; // fraction of max HP restored on the stairs
+export const DESCEND_HEAL = 0.2; // fraction of max HP restored between acts
 
 // Lantern oil drains slowly as you walk. Less oil, less light.
 export const LANTERN = {
@@ -588,6 +627,63 @@ export const EVENTS = {
   },
 };
 
+// The storyline: Sister Vell, the Inkbinder who went down before you. One beat per act.
+// Your choices move her trust. In the last act it decides who she is when you find her.
+export const STORY = {
+  vell1: {
+    name: 'The Woman at the Font', art: 'vell',
+    text: 'A woman in a scorched habit kneels at a dry font, writing a ward onto the stone with one finger. Her hands are black to the wrist. "Sister Vell," she says, without looking up. "I came down a year ago. I am nearly out of ink."',
+    options: [
+      { id: 'give', label: 'Give her your ink', desc: 'Lose up to 2 ink colors. She will remember.' },
+      { id: 'ask', label: 'Ask what waits below', desc: 'Heal 10 HP. Dread -10.' },
+      { id: 'take', label: 'Take her quill', desc: 'Gain a relic. She will remember that too.' },
+    ],
+  },
+  vell2: {
+    name: 'The Drowned Scriptorium', art: 'vell',
+    text: 'Vell sits at a desk under a foot of black water, copying a page that rewrites itself as she works. "It keeps changing the ending," she says. Her eyes are ink to the rims.',
+    options: [
+      { id: 'help', label: 'Hold the page still', desc: 'Lose 8 HP. Gain Ghostlight. She will remember.' },
+      { id: 'take', label: 'Take the page from her', desc: 'Learn a spell. Corruption +2. She will remember.' },
+      { id: 'leave', label: 'Leave her to it', desc: '' },
+    ],
+  },
+  vell3: {
+    name: "Vell's Bargain", art: 'vell',
+    text: 'Vell waits among the standing dead. The ink has reached her throat. "I can bind one of your cards so it never wears out," she whispers. "It will take the last of me that is still me."',
+    options: [
+      { id: 'bind', label: 'Let her bind a card', desc: 'Your most fragile crafted card becomes Permanent and Pristine. It costs her.' },
+      { id: 'share', label: 'Refuse, and share your water', desc: 'Lose 6 HP. She will remember.' },
+      { id: 'cut', label: 'Cut the ink from her hands', desc: 'Gain 2 Ichor. She will never forgive it.' },
+    ],
+  },
+  vell4_ally: {
+    name: 'The Last Page', art: 'vell',
+    text: 'Vell is waiting at the foot of the last stair. Her hands are clean. "I will hold its pages open," she says. "You write."',
+    options: [
+      { id: 'fight', label: 'Face the Grimoire together', desc: 'The Grimoire starts with 25% less HP and 2 Weak.' },
+      { id: 'send', label: 'Send her up to the light', desc: 'She leaves you her lantern and her blessing: full oil, full HP.' },
+    ],
+  },
+  vell4_page: {
+    name: 'The Last Page', art: 'vell',
+    text: 'You find only her habit, folded on a lectern, and a last page with your name on it.',
+    options: [
+      { id: 'read', label: 'Read it', desc: 'Learn a spell, or heal 15 if you know them all.' },
+      { id: 'burn', label: 'Burn it for light', desc: '+40 lantern oil.' },
+    ],
+  },
+  vell4_hollow: {
+    name: 'The Last Page', art: 'vellHollow',
+    text: 'What used to be Vell is writing on the floor with its fingers, the same word over and over. It is your name. It looks up.',
+    options: [
+      { id: 'fight', label: 'Face her', desc: 'A hard fight. She keeps a relic.' },
+      { id: 'slip', label: 'Slip past her', desc: 'She goes ahead to her master. The Grimoire gains 2 Strength.' },
+    ],
+  },
+};
+export const STORY_ALLY_TRUST = 2;
+
 // Playable Inkbinders. Each starts differently and unlocks through lifetime progress.
 // `start` adds to (inventory) or replaces (other fields) the normal starting values.
 export const VARIANTS = {
@@ -618,10 +714,12 @@ export const VARIANTS = {
 
 // Tips for a first run. Each shows once, and the player can turn them all off.
 export const HINTS = {
-  explore: 'Tap a tile or use WASD to walk. The writing desk with the candle is close by: that is where you refine and craft. Scavenge the marked spots on the way.',
+  map: 'Choose where to go next. Delves are dungeons full of materials and wandering monsters. The guardian of the act waits at the top. Follow the lines.',
+  explore: 'Tap a tile or use WASD to walk. The writing desk is close by: that is where you refine and craft. Scavenge the marked spots, then find the way out.',
   desk: 'Refine raw materials on the Refine tab first. Then Inscribe a card: pick a card material, an ink color and an ink material. Monster parts add enchantments.',
   fight: 'You get 3 mana each turn, and enemies show what they will do next. Cast crafted cards of different inks back to back to set off reactions.',
   lantern: 'Your lantern is running low and the dark is closing in. Burn a card for oil, or climb back to the surface from the stairs up.',
   corruption: 'Blood and ichor are corrupting you. At 5 you are Tainted, at 10 Forsaken. Rest at desks or pray at shrines to cleanse it.',
-  guardian: 'A guardian stands on the stairs down. You have to beat it to go deeper. Craft before you face it.',
+  guardian: 'Something guards the way out of this delve. Beat it and it leaves a relic. Craft before you face it.',
+  camp: 'A scriptorium. Craft as much as you like, then choose: rest to heal, or refill your lantern. You can only do one.',
 };

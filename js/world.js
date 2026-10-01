@@ -1,7 +1,7 @@
-import { REGIONS, RAW_MATERIALS, ENCOUNTER, LANTERN, EVENTS, PRISTINE } from './data.js';
+import { REGIONS, RAW_MATERIALS, ENCOUNTER, LANTERN, EVENTS, PRISTINE, DELVE } from './data.js';
 
 export const WALL = 0, FLOOR = 1;
-export const MAP_W = 46, MAP_H = 32;
+export const MAP_W = 38, MAP_H = 26;
 export const LIGHT_RADIUS = 5;
 
 export function lightRadius(oil) {
@@ -29,17 +29,20 @@ function weightedPick(weights, rng) {
   return entries[entries.length - 1][0];
 }
 
-// Rooms joined by L-shaped corridors, plus a few extra links so there are loops.
-export function generateRegion(regionIdx, seed) {
+// One delve: rooms joined by L-shaped corridors, plus a few extra links so there are loops.
+// opts.elite puts an elite on the way out; opts.events is the pool of events not yet seen this run.
+export function generateRegion(regionIdx, seed, opts = {}) {
   const rng = mulberry32(seed);
   const region = REGIONS[regionIdx];
+  const haunted = !!opts.elite;
+  const size = haunted ? DELVE.haunted : DELVE.plain;
   const tiles = new Uint8Array(MAP_W * MAP_H);
   const at = (x, y) => y * MAP_W + x;
   const carve = (x, y) => { if (x > 0 && y > 0 && x < MAP_W - 1 && y < MAP_H - 1) tiles[at(x, y)] = FLOOR; };
 
   const rooms = [];
-  for (let tries = 0; tries < 200 && rooms.length < 11; tries++) {
-    const w = randInt(rng, 4, 9), h = randInt(rng, 4, 7);
+  for (let tries = 0; tries < 200 && rooms.length < size.rooms; tries++) {
+    const w = randInt(rng, 4, 8), h = randInt(rng, 4, 6);
     const x = randInt(rng, 1, MAP_W - w - 2), y = randInt(rng, 1, MAP_H - h - 2);
     const r = { x, y, w, h, cx: x + (w >> 1), cy: y + (h >> 1) };
     if (rooms.some(o => x - 1 < o.x + o.w && x + w + 1 > o.x && y - 1 < o.y + o.h && y + h + 1 > o.y)) continue;
@@ -57,7 +60,7 @@ export function generateRegion(regionIdx, seed) {
     carve(x, y);
   };
   for (let i = 1; i < rooms.length; i++) corridor(rooms[i - 1], rooms[i]);
-  for (let i = 0; i < 3; i++) corridor(rooms[randInt(rng, 0, rooms.length - 1)], rooms[randInt(rng, 0, rooms.length - 1)]);
+  for (let i = 0; i < 2; i++) corridor(rooms[randInt(rng, 0, rooms.length - 1)], rooms[randInt(rng, 0, rooms.length - 1)]);
 
   const world = {
     regionIdx, seed, tiles, rooms,
@@ -71,12 +74,10 @@ export function generateRegion(regionIdx, seed) {
     oilSteps: 0,
   };
 
-  // Farthest room from the start holds the way down (or the boss).
+  // Farthest room from the start holds the way out.
   const dist = distances(world, world.px, world.py);
   const byDistance = rooms.slice(1).sort((a, b) => dist[at(b.cx, b.cy)] - dist[at(a.cx, a.cy)]);
   const exitRoom = byDistance[0];
-  const middle = byDistance.slice(1);
-  const takeRoom = () => middle.splice(randInt(rng, 0, middle.length - 1), 1)[0];
 
   const occupied = new Set([at(world.px, world.py)]);
   let nextId = 1;
@@ -92,34 +93,25 @@ export function generateRegion(regionIdx, seed) {
     return null;
   };
 
-  // The way back up to the surface is where you arrive.
+  // The way back up to the surface is where you arrive. The way out is at the far end.
   world.objects.push({ id: nextId++, type: 'up', x: world.px, y: world.py });
-  if (region.boss) place('boss', exitRoom.cx, exitRoom.cy, { enemy: region.boss });
-  else place('exit', exitRoom.cx, exitRoom.cy, { guard: region.guardian || null });
+  place('exit', exitRoom.cx, exitRoom.cy, { guard: opts.elite || null });
 
-  // The desk sits close to the start so you can craft early, the merchant further in.
+  // A writing desk close to the start, so you can craft what you find.
   const nearStart = rooms.slice(1).filter(r => r !== exitRoom)
     .sort((a, b) => dist[at(a.cx, a.cy)] - dist[at(b.cx, b.cy)]);
   const deskRoom = nearStart[0];
-  middle.splice(middle.indexOf(deskRoom), 1);
-  place('desk', deskRoom.cx, deskRoom.cy);
-  if (region.merchant && middle.length) { const r = takeRoom(); place('merchant', r.cx, r.cy); }
-  if (region.elite && middle.length) {
-    const r = takeRoom();
-    place('elite', r.cx, r.cy, { enemy: region.elite });
-  }
-  for (let i = 0; i < region.chests; i++) {
+  if (deskRoom) place('desk', deskRoom.cx, deskRoom.cy);
+  for (let i = 0; i < size.chests; i++) {
     const spot = freeTileIn(rooms[randInt(rng, 1, rooms.length - 1)]);
     if (spot) place('chest', ...spot);
   }
-  const eventPool = Object.keys(EVENTS);
-  for (let i = 0; i < (region.events || 0) && eventPool.length; i++) {
+  const eventPool = [...(opts.events || Object.keys(EVENTS))];
+  if (eventPool.length && rng() < DELVE.eventChance) {
     const spot = freeTileIn(rooms[randInt(rng, 1, rooms.length - 1)]);
-    if (!spot) continue;
-    const event = eventPool.splice(randInt(rng, 0, eventPool.length - 1), 1)[0];
-    place('event', ...spot, { event });
+    if (spot) place('event', ...spot, { event: eventPool[randInt(rng, 0, eventPool.length - 1)] });
   }
-  for (let i = 0; i < region.nodes; i++) {
+  for (let i = 0; i < size.nodes; i++) {
     const spot = freeTileIn(rooms[randInt(rng, 0, rooms.length - 1)]);
     if (!spot) continue;
     const raw = weightedPick(region.raws, rng);

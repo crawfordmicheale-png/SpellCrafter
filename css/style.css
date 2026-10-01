@@ -498,3 +498,56 @@ button.linkish { background: none; border: none; color: var(--muted); text-decor
 @keyframes spark { from { transform: translate(0, 0); opacity: 1; } to { transform: translate(var(--dx), var(--dy)) scale(.4); opacity: 0; } }
 .phase-banner { color: #ff9d8f; text-shadow: 0 0 18px #b1352f, 0 3px 0 #000; font-size: 2.6rem; }
 @media (prefers-reduced-motion: reduce) { #app.shake-s, #app.shake-l { animation: none; } }
+
+/* ---------- overworld map ---------- */
+.overworld { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+.owmain { min-width: 0; }
+.owmap {
+  position: relative; width: 100%; max-width: 540px; aspect-ratio: 5 / 7.4; margin: 0 auto;
+  border: 1px solid var(--line); border-radius: 4px; overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--t3) 35%, transparent), transparent 55%),
+    repeating-linear-gradient(0deg, #0000 0 23px, #ffffff06 23px 24px),
+    linear-gradient(180deg, var(--t2), var(--t1) 60%, var(--t2));
+}
+.owmap svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.owmap line { stroke: #a4987f55; stroke-width: 2; stroke-dasharray: 3 5; vector-effect: non-scaling-stroke; }
+.owmap line.walked { stroke: var(--brass); stroke-dasharray: none; stroke-width: 2.5; }
+.owmap line.open { stroke: var(--rare); stroke-width: 2.5; animation: march 1s linear infinite; }
+@keyframes march { to { stroke-dashoffset: -16; } }
+.ownode {
+  position: absolute; transform: translate(-50%, -50%); width: 46px; height: 46px; padding: 0;
+  display: grid; place-items: center; border-radius: 50%;
+  background: #120e15; border: 2px solid #4a4050; box-shadow: 0 2px 6px #0009;
+}
+.ownode .portrait { width: 32px; height: 32px; }
+.ownode.t-guardian { width: 78px; height: 78px; border-color: #6e1a16; background: #1c0f12; }
+.ownode.t-guardian .portrait { width: 64px; height: 64px; }
+.ownode.t-story { border-color: #8a7650; }
+.ownode.locked { opacity: .5; cursor: default; filter: saturate(.6); }
+.ownode.visited { opacity: .55; cursor: default; }
+.ownode.visited::after { content: ''; position: absolute; inset: 8px; background:
+  linear-gradient(45deg, #0000 45%, #b1352fcc 45% 55%, #0000 55%), linear-gradient(-45deg, #0000 45%, #b1352fcc 45% 55%, #0000 55%); }
+.ownode.here { opacity: 1; border-color: var(--rare); box-shadow: 0 0 0 3px #e0b95c44, 0 0 18px #e0b95c55; }
+.ownode.here::after { display: none; }
+.ownode.open { border-color: var(--rare); cursor: pointer; animation: beckon 1.6s ease-in-out infinite; }
+.ownode.open:hover, .ownode.open:focus-visible { background: #2b2314; transform: translate(-50%, -50%) scale(1.12); animation: none; }
+@keyframes beckon { 0%, 100% { box-shadow: 0 0 0 0 #e0b95c00, 0 2px 6px #0009; } 50% { box-shadow: 0 0 0 6px #e0b95c33, 0 0 16px #e0b95c66; } }
+.owside .meters { margin-top: 4px; }
+.owlegend { list-style: none; margin: 0; padding: 12px; display: grid; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+.owlegend li { display: grid; grid-template-columns: 32px 1fr; gap: 10px; align-items: center; font-size: .85rem; color: var(--muted); }
+.owlegend .portrait { width: 32px; height: 32px; }
+.owlegend b { display: block; color: var(--text); font-family: var(--f-label); font-weight: normal; letter-spacing: .03em; }
+.campacts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.storytag { margin: 0; font-family: var(--f-label); letter-spacing: .12em; color: var(--brass); font-size: .85rem; text-transform: uppercase; }
+.oilware { border-color: #8a5a1a; }
+@media (max-width: 860px) {
+  .overworld { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .ownode { width: 40px; height: 40px; }
+  .ownode .portrait { width: 28px; height: 28px; }
+  .ownode.t-guardian { width: 64px; height: 64px; }
+  .ownode.t-guardian .portrait { width: 52px; height: 52px; }
+}
+@media (prefers-reduced-motion: reduce) { .ownode.open, .owmap line.open { animation: none; } }

@@ -12,7 +12,7 @@ export function objectName(obj) {
     case 'chest': return 'Reliquary box';
     case 'desk': return 'Writing desk';
     case 'merchant': return 'The Rag Merchant';
-    case 'exit': return obj.guard ? `${ENEMIES[obj.guard].name}, guarding the stairs down` : 'Stairs down';
+    case 'exit': return obj.guard ? `${ENEMIES[obj.guard].name}, guarding the way out` : 'The way out';
     case 'up': return 'Stairs up to the surface';
     case 'event': return EVENTS[obj.event].name;
     case 'elite': case 'boss': return ENEMIES[obj.enemy].name;

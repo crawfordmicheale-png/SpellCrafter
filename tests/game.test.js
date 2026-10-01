@@ -2,11 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { craftCard, validateBlueprint, findRecipe } from '../js/crafting.js';
 import { createCombat, playCard, endTurn } from '../js/combat.js';
-import { createRun, craftIntoDeck, salvageCard, refine, reinscribe, mend, descend, burnCard, resurface, rest, gainRelic as gainRelicFor, applyRewards, serializeRun, deserializeRun } from '../js/run.js';
+import { createRun, craftIntoDeck, salvageCard, refine, reinscribe, mend, descend, burnCard, resurface, rest, gainRelic as gainRelicFor, applyRewards, serializeRun, deserializeRun, enterNode, leaveDelve, campChoice, buyOil, currentNode } from '../js/run.js';
+import { generateMap, availableNodes } from '../js/overworld.js';
 import { generateRegion, findPath, step, isFloor, objectAt, lightRadius } from '../js/world.js';
 import { RECIPES, REGIONS } from '../js/data.js';
 
 const seq = (...vals) => { let i = 0; return () => vals[i++ % vals.length]; };
+// Every run starts on the map. The bottom row is always a delve.
+const intoDelve = run => { enterNode(run, availableNodes(run.map)[0].id, () => 0.5); return run.world; };
 
 test('formula: color base x ink material multiplier', () => {
   const c = craftCard({ colors: ['red'], inkMat: 'blood', cardMat: 'wood' });
@@ -133,15 +136,17 @@ test('hungering cards grow each cast in a fight', () => {
   assert.equal(second - first, 2);
 });
 
-test('regions generate connected maps with a desk and an exit', () => {
+test('delves generate connected maps with a desk and a way out', () => {
   for (let seed = 1; seed <= 30; seed++) {
     for (let r = 0; r < REGIONS.length; r++) {
-      const w = generateRegion(r, seed);
-      assert.ok(w.rooms.length >= 5, `rooms seed ${seed}`);
+      const elite = seed % 2 ? REGIONS[r].elites[0] : null;
+      const w = generateRegion(r, seed, { elite });
+      assert.ok(w.rooms.length >= 4, `rooms seed ${seed}`);
       assert.ok(isFloor(w, w.px, w.py));
-      const goal = w.objects.find(o => o.type === (REGIONS[r].boss ? 'boss' : 'exit'));
+      const goal = w.objects.find(o => o.type === 'exit');
       const desk = w.objects.find(o => o.type === 'desk');
       assert.ok(goal && desk);
+      assert.equal(goal.guard, elite);
       w.seen.fill(1);
       assert.ok(findPath(w, goal.x, goal.y), `exit reachable seed ${seed} region ${r}`);
       assert.equal(w.objects.filter(o => w.objects.some(p => p !== o && p.x === o.x && p.y === o.y)).length, 0);
@@ -151,7 +156,7 @@ test('regions generate connected maps with a desk and an exit', () => {
 
 test('walking builds dread and eventually meets something', () => {
   const run = createRun(3);
-  const w = run.world;
+  const w = intoDelve(run);
   let met = null;
   const rng = seq(0.5, 0.01);
   for (let i = 0; i < 400 && !met; i++) {
@@ -163,6 +168,8 @@ test('walking builds dread and eventually meets something', () => {
   assert.ok(run.dread > 0);
   descend(run);
   assert.equal(run.regionIdx, 1);
+  assert.equal(run.world, null);
+  assert.equal(run.map.act, 1);
 });
 
 test('sprites are well-formed', async () => {
@@ -183,7 +190,7 @@ test('sprites are well-formed', async () => {
 
 test('lantern oil drains slowly and shrinks the light', () => {
   const run = createRun(5);
-  const w = run.world;
+  const w = intoDelve(run);
   assert.equal(w.radius, 5);
   let steps = 0;
   for (let i = 0; i < 2000 && run.oil > 50; i++) {
@@ -199,6 +206,7 @@ test('lantern oil drains slowly and shrinks the light', () => {
 
 test('burning cards and resurfacing refuel the lantern', () => {
   const run = createRun(5);
+  intoDelve(run);
   run.oil = 40;
   const starter = run.deck[0];
   assert.equal(burnCard(run, starter.uid).oil, 8);
@@ -273,17 +281,18 @@ test('piercing ignores block and hallowed grants block', () => {
   assert.equal(c.player.block, block + 4);
 });
 
-test('floors place their events', () => {
+test('some delves hold an event, drawn from the unseen pool', () => {
   let events = 0;
-  for (let seed = 1; seed <= 10; seed++) {
+  for (let seed = 1; seed <= 40; seed++) {
     for (let r = 0; r < REGIONS.length; r++) {
-      const w = generateRegion(r, seed);
+      const w = generateRegion(r, seed, { events: ['mirror', 'altar'] });
       const ev = w.objects.filter(o => o.type === 'event');
-      assert.equal(new Set(ev.map(o => o.event)).size, ev.length);
+      assert.ok(ev.length <= 1);
+      for (const o of ev) assert.ok(['mirror', 'altar'].includes(o.event));
       events += ev.length;
     }
   }
-  assert.ok(events >= 50);
+  assert.ok(events > 30 && events < 90, `${events} events in 160 delves`);
   assert.equal(REGIONS.length, 4);
 });
 
@@ -345,7 +354,7 @@ test('relics change the rules', () => {
 test('the Moth Lantern halves oil use', () => {
   const run = createRun(5);
   gainRelicFor(run, 'mothlantern');
-  const w = run.world;
+  const w = intoDelve(run);
   for (let i = 0; i < 100; i++) {
     const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => isFloor(w, w.px + dx, w.py + dy) && !objectAt(w, w.px + dx, w.py + dy));
     step(w, run, ...dirs[i % dirs.length], () => 0.99);
@@ -356,6 +365,10 @@ test('the Moth Lantern halves oil use', () => {
 
 test('a run survives saving and loading', () => {
   const run = createRun(9);
+  const onMap = deserializeRun(serializeRun(run)).run;
+  assert.equal(onMap.world, null);
+  assert.equal(onMap.map.nodes.length, run.map.nodes.length);
+  intoDelve(run);
   Object.assign(run.inventory, { color_red: 1, mat_stone: 1 });
   craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'stone' });
   gainRelicFor(run, 'dice');
@@ -388,6 +401,7 @@ test('Inkbinder variants start differently and unlock from progress', async () =
   assert.equal(heretic.gold, 120);
   assert.equal(oilMax(heretic), 70);
   heretic.oil = 60;
+  intoDelve(heretic);
   assert.equal(resurface(heretic).dread, 30);
   assert.equal(heretic.oil, 70);
   const monk = createRun(3, [], 'ashmonk');
@@ -484,13 +498,119 @@ test('bosses change phase at half health', async () => {
   assert.equal(c.phaseEvent.name, 'The bell cracks');
 });
 
-test('each floor but the last has a guardian on the stairs', () => {
-  for (let r = 0; r < REGIONS.length; r++) {
-    const w = generateRegion(r, 4);
-    const exit = w.objects.find(o => o.type === 'exit');
-    if (REGIONS[r].boss) assert.equal(exit, undefined);
-    else assert.equal(exit.guard, REGIONS[r].guardian);
+test('act maps branch upward to a single guardian, with a camp before it', () => {
+  for (let seed = 1; seed <= 60; seed++) {
+    for (let act = 0; act < REGIONS.length; act++) {
+      const map = generateMap(act, seed);
+      const { nodes } = map;
+      const top = nodes.filter(n => n.type === 'guardian');
+      assert.equal(top.length, 1);
+      assert.ok(availableNodes(map).length >= 2, `choices at the start, seed ${seed}`);
+      assert.ok(availableNodes(map).every(n => n.type === 'delve'));
+      for (const n of nodes) {
+        if (n.type !== 'guardian') assert.ok(n.next.length, `dead end at row ${n.row}`);
+        for (const id of n.next) assert.equal(nodes[id].row, n.row + 1);
+        if (nodes.some(m => m.next.includes(n.id) && ['camp'].includes(m.type))) assert.ok(n.type === 'guardian' || n.type !== 'camp');
+      }
+      for (const n of nodes.filter(m => m.next.includes(top[0].id))) assert.equal(n.type, 'camp');
+      for (const type of ['haunted', 'shop', 'story']) assert.ok(nodes.some(n => n.type === type), `${type} seed ${seed} act ${act}`);
+      // No two paths cross.
+      for (const a of nodes) for (const b of nodes) {
+        if (a.row !== b.row || a === b) continue;
+        for (const x of a.next) for (const y of b.next) {
+          if (a.col < b.col) assert.ok(nodes[x].col <= nodes[y].col, `crossing seed ${seed}`);
+        }
+      }
+      // Merchants, camps and haunted delves never follow one of their own kind.
+      for (const n of nodes) for (const id of n.next) {
+        if (['shop', 'haunted'].includes(n.type)) assert.notEqual(nodes[id].type, n.type);
+      }
+    }
   }
+});
+
+test('moving on the map follows the lines', () => {
+  const run = createRun(21);
+  const [first] = availableNodes(run.map);
+  const far = run.map.nodes.find(n => n.row === 3);
+  assert.ok(enterNode(run, far.id).error);
+  const r = enterNode(run, first.id, () => 0.5);
+  assert.equal(r.type, 'delve');
+  assert.ok(run.world);
+  assert.equal(currentNode(run), first);
+  run.dread = 41;
+  assert.equal(leaveDelve(run).eased, 21);
+  assert.equal(run.world, null);
+  const next = availableNodes(run.map);
+  assert.ok(next.length >= 1);
+  assert.ok(next.every(n => first.next.includes(n.id)));
+});
+
+test('scriptoria offer rest or oil, merchants sell oil', () => {
+  const run = createRun(22);
+  const camp = { type: 'camp' };
+  run.hp = 20; run.oil = 10;
+  assert.equal(campChoice(run, camp, 'rest').heal, 18);
+  assert.ok(campChoice(run, camp, 'oil').error);
+  const camp2 = { type: 'camp' };
+  assert.equal(campChoice(run, camp2, 'oil').oil, 90);
+  run.oil = 50; run.gold = 20;
+  assert.equal(buyOil(run).oil, 40);
+  assert.equal(run.gold, 5);
+  assert.ok(buyOil(run).error);
+});
+
+test('unknown nodes and the guardian resolve', () => {
+  const run = createRun(23);
+  // An unknown node in the bottom row, so it can be entered from the start.
+  const node = { id: run.map.nodes.length, row: 0, type: 'unknown', next: [] };
+  run.map.nodes.push(node);
+  assert.equal(enterNode(run, node.id, () => 0.01).type, 'fight');
+  run.map.pos = null;
+  const cache = enterNode(run, node.id, () => 0.2);
+  assert.equal(cache.type, 'cache');
+  assert.ok(cache.items.length >= 1);
+  run.map.pos = null;
+  const ev = enterNode(run, node.id, () => 0.9);
+  assert.equal(ev.type, 'event');
+  assert.ok(run.seenEvents.includes(ev.event));
+  node.type = 'guardian';
+  run.map.pos = null;
+  assert.deepEqual(enterNode(run, node.id).enemies, ['warden']);
+  run.regionIdx = 3;
+  run.map.pos = null;
+  const boss = enterNode(run, node.id);
+  assert.equal(boss.kind, 'boss');
+  assert.deepEqual(boss.enemies, ['grimoire']);
+});
+
+test("Sister Vell's story follows your choices", async () => {
+  const { resolveEvent, lastBeat } = await import('../js/events.js');
+  const kind = createRun(24);
+  resolveEvent(kind, 'vell1', 'give');
+  resolveEvent(kind, 'vell2', 'help');
+  resolveEvent(kind, 'vell3', 'share');
+  assert.equal(kind.story.trust, 3);
+  assert.equal(lastBeat(kind), 'vell4_ally');
+  resolveEvent(kind, 'vell4_ally', 'fight');
+  assert.ok(kind.story.ally);
+
+  const cruel = createRun(25);
+  const r = resolveEvent(cruel, 'vell1', 'take', () => 0);
+  assert.ok(r.relic);
+  assert.equal(lastBeat(cruel), 'vell4_hollow');
+  assert.deepEqual(resolveEvent(cruel, 'vell4_hollow', 'fight').fight, ['vellHollow']);
+  resolveEvent(cruel, 'vell4_hollow', 'slip');
+  assert.ok(cruel.story.hollowAhead);
+
+  const mild = createRun(26);
+  resolveEvent(mild, 'vell1', 'give');
+  assert.equal(lastBeat(mild), 'vell4_page');
+  Object.assign(mild.inventory, { color_red: 1, mat_paper: 1, ink_charcoal: 1 });
+  const { card } = craftIntoDeck(mild, { colors: ['red'], inkMat: 'charcoal', cardMat: 'paper' });
+  resolveEvent(mild, 'vell3', 'bind');
+  assert.equal(card.durability, Infinity);
+  assert.ok(card.pristine);
 });
 
 test('new events resolve', async () => {
