@@ -1,7 +1,7 @@
 import {
   INK_COLORS, INK_MATERIALS, CARD_MATERIALS, ENCHANTMENTS, INGREDIENTS, RECIPES, ENEMIES, REPAIR_PRICE,
   REGIONS, RAW_MATERIALS, LANTERN, EVENTS, RELICS, REACTIONS, VARIANTS, CORRUPTION, PRISTINE, HINTS,
-  STORY, NODE_TYPES, OIL_WARE, CAMP, MAP, ALT_SOURCES, SECOND_INK_COST, SIGNATURES, NAME_MAX,
+  STORY, NODE_TYPES, OIL_WARE, CAMP, MAP, DELVE_CONDITIONS, ALT_SOURCES, SECOND_INK_COST, SIGNATURES, NAME_MAX,
 } from './data.js';
 import { resolveEvent } from './events.js';
 import { availableNodes, guardianOf } from './overworld.js';
@@ -45,6 +45,7 @@ let lastStepAt = 0;
 let standingOn = null;
 let eventCtx = null;  // { obj, id, result }: obj is a delve object or a map node
 let mapNote = null;   // a line of news shown on the map
+let deckOpen = false; // the deck viewer is showing
 let lastScreen = null;
 let forgetArmed = false;
 let abandonArmed = false;
@@ -96,7 +97,7 @@ function cardHtml(card, { cost = card.cost, disabled = false, action = '', extra
   // Wordy cards get a compact layout so their text stays on the card.
   const dense = describeCard(card).length + (card.flavor ? 1 : 0) >= 4;
   return `<${tag} class="card mat-${mat}${card.recipeId ? ' named' : ''}${dense ? ' dense' : ''}${card.pristine ? ' pristine' : ''}${disabled ? ' disabled' : ''}${cls ? ` ${cls}` : ''}" ${action} ${disabled && action ? 'aria-disabled="true"' : ''}>
-    <span class="cost${cost < card.cost ? ' free' : ''}">${cost}</span>
+    <span class="cost${cost < card.cost ? ' free' : cost > card.cost ? ' dear' : ''}">${cost}</span>
     ${card.hpCost ? `<span class="blood" title="Costs ${card.hpCost} HP">${card.hpCost}</span>` : ''}
     <span class="cname">${card.name}</span>
     ${sigil(card.colors)}
@@ -128,6 +129,9 @@ function intentText(enemy) {
       case 'block': return '<span class="intent def">Defend</span>';
       case 'buff': return '<span class="intent buff">Empower</span>';
       case 'debuff': return `<span class="intent curse">Curse (${a.status})</span>`;
+      case 'devour': return '<span class="intent pest" title="Eats a paper card from your deck for this fight, and wears it down">Devour paper</span>';
+      case 'smudge': return '<span class="intent pest" title="A paper or wood card works at half strength for this fight">Drain ink</span>';
+      case 'tarnish': return '<span class="intent pest" title="Silver and gold cards cost 1 more next turn">Tarnish</span>';
     }
   }).join('');
 }
@@ -151,7 +155,7 @@ function renderBar() {
     <span class="stats">
       <span class="stat hp" title="Health">HP <b>${run.hp}/${run.maxHp}</b></span>
       <span class="stat gold" title="Gold">Gold <b>${run.gold}</b></span>
-      <span class="stat deck" title="Cards in deck">Deck <b>${run.deck.length}</b></span>
+      <button class="stat deck deckbtn" data-act="openDeck" title="See your deck (V)" aria-haspopup="dialog">Deck <b>${run.deck.length}</b></button>
       <span class="stat dread" title="Dread rises as you wander. Monsters find you more often.">Dread <b>${run.dread}</b></span>
       ${run.corruption ? `<span class="stat corruption" title="Corruption ${run.corruption}. Tainted at ${CORRUPTION.tainted}: Black and Blood cards +${CORRUPTION.taintBonus}, but you start fights Weak. Forsaken at ${CORRUPTION.forsaken}: forbidden recipes open, but enemies gain Strength.">Corruption <b>${run.corruption}${corruptionState(run) ? ` · ${corruptionState(run)}` : ''}</b></span>` : ''}
     </span>
@@ -241,9 +245,14 @@ function nodePos(n) {
   return [((n.col + 0.5) / MAP.cols) * 100 + jitter(n.id + 1, 8), (1 - (n.row + 0.5) / MAP.rows) * 100 + jitter(n.id + 11, 3)];
 }
 
-const nodeInfo = n => (n.type === 'guardian'
-  ? { name: ENEMIES[guardianOf(run.regionIdx)].name, desc: run.regionIdx === REGIONS.length - 1 ? 'The first book. Beat it to end the run.' : NODE_TYPES.guardian.desc, sprite: guardianOf(run.regionIdx) }
-  : NODE_TYPES[n.type]);
+const nodeInfo = n => {
+  if (n.type === 'guardian') {
+    return { name: ENEMIES[guardianOf(run.regionIdx)].name, desc: run.regionIdx === REGIONS.length - 1 ? 'The first book. Beat it to end the run.' : NODE_TYPES.guardian.desc, sprite: guardianOf(run.regionIdx) };
+  }
+  const cond = DELVE_CONDITIONS[n.cond];
+  const t = NODE_TYPES[n.type];
+  return cond ? { ...t, name: `${t.name}, ${cond.name.toLowerCase()}`, desc: `${cond.desc} ${t.desc}` } : t;
+};
 
 function renderOverworld(scroll) {
   const map = run.map;
@@ -262,7 +271,7 @@ function renderOverworld(scroll) {
     const state = n.id === map.pos ? 'here' : visited.has(n.id) ? 'visited' : open.has(n.id) ? 'open' : 'locked';
     const go = state === 'open';
     return `<button class="ownode t-${n.type} ${state}" style="left:${x}%;top:${y}%" ${go ? `data-act="goNode" data-id="${n.id}"` : 'aria-disabled="true" tabindex="-1"'}
-      title="${info.name}: ${info.desc}" aria-label="${info.name}${go ? '. Go here.' : ''}">${portrait(info.sprite)}</button>`;
+      title="${info.name}: ${info.desc}" aria-label="${info.name}${go ? '. Go here.' : ''}">${portrait(info.sprite)}${n.cond ? `<span class="cond c-${n.cond}" aria-hidden="true">${DELVE_CONDITIONS[n.cond].glyph}</span>` : ''}</button>`;
   }).join('');
   const legend = ['delve', 'haunted', 'unknown', 'shop', 'camp', 'story']
     .map(t => `<li>${portrait(NODE_TYPES[t].sprite)}<span><b>${NODE_TYPES[t].name}</b>${NODE_TYPES[t].desc}</span></li>`).join('');
@@ -289,6 +298,8 @@ function renderOverworld(scroll) {
         <div class="meter dread" title="Dread ${run.dread}"><span style="width:${Math.min(100, run.dread / 2)}%"></span><em>Dread ${run.dread}</em></div>
       </div>
       <ul class="owlegend">${legend}</ul>
+      <h3 class="panel-title">Delve conditions</h3>
+      <ul class="condlegend">${Object.entries(DELVE_CONDITIONS).map(([k, c]) => `<li><span class="cond c-${k}">${c.glyph}</span><span><b>${c.name}</b>${c.desc}</span></li>`).join('')}</ul>
     </aside>
   </section>`;
   const target = app.querySelector('.ownode.open');
@@ -368,6 +379,7 @@ function renderSide() {
     ${exploreHint()}
     <h2>${currentNode(run)?.type === 'haunted' ? 'A haunted delve' : 'A delve'}</h2>
     <p class="intro">${region.name}. Find the way out at the far end.</p>
+    ${run.world.cond ? `<p class="condline"><span class="cond c-${run.world.cond}">${DELVE_CONDITIONS[run.world.cond].glyph}</span><b>${DELVE_CONDITIONS[run.world.cond].name}.</b> ${DELVE_CONDITIONS[run.world.cond].desc}</p>` : ''}
     ${action}
     <div class="meters">
       <div class="meter oil${run.oil < 12 ? ' low' : ''}" title="Lantern oil ${run.oil} of ${oilMax(run)}. Light radius ${run.world.radius}."><span style="width:${oilPct}%"></span><em>Lantern ${run.oil}</em></div>
@@ -475,7 +487,11 @@ function interact(obj) {
 function startFight(enemies, ctx) {
   fightCtx = { ...ctx, enemies };
   saveNow({ fight: fightResume(fightCtx) });
-  combat = createCombat(run, enemies, Math.random, { hpMult: currentRegion(run).hpMult });
+  combat = createCombat(run, enemies, Math.random, {
+    hpMult: currentRegion(run).hpMult,
+    paperWear: DELVE_CONDITIONS[run.world?.cond]?.paperWear || 0,
+  });
+  if (combat.paperWear) combat.log.push('The water seeps into everything. Paper cards wear twice as fast here.');
   if (ctx.kind === 'boss') storyAtBoss(combat);
   target = 0;
   screen = 'fight';
@@ -681,7 +697,35 @@ function backLabel() {
   return 'Back to the map';
 }
 
+// ---------- deck viewer ----------
+
+// Crafted cards first, then by name, so the order never gives away the draw pile.
+const sortCards = cards => [...cards].sort((a, b) => (b.crafted - a.crafted) || a.name.localeCompare(b.name));
+
+function deckOverlay() {
+  const grid = cards => cards.length ? `<div class="cards">${sortCards(cards).map(k => cardHtml(k, { cost: combat && screen === 'fight' ? effectiveCost(combat, k) : k.cost })).join('')}</div>` : '<p class="none">None.</p>';
+  const crafted = run.deck.filter(k => k.crafted).length;
+  const body = screen === 'fight' && combat
+    ? `<h3 class="section-title">Draw pile (${combat.drawPile.length})</h3>${grid(combat.drawPile)}
+       <h3 class="section-title">Discard pile (${combat.discard.length})</h3>${grid(combat.discard)}
+       ${combat.exhaust.length ? `<h3 class="section-title">Gone for this fight (${combat.exhaust.length})</h3>${grid(combat.exhaust)}` : ''}`
+    : grid(run.deck);
+  return `<div id="deckov" class="deckov">
+    <div class="deckov-back" data-act="closeDeck"></div>
+    <section class="deckov-panel" role="dialog" aria-modal="true" aria-labelledby="deckov-title">
+      <header class="screen-head">
+        <h2 id="deckov-title">Your deck</h2>
+        <p>${run.deck.length} cards: ${crafted} crafted, ${run.deck.length - crafted} starters.${screen === 'fight' ? ' Your hand is on the table.' : ''}</p>
+        <button class="primary deckov-close" data-act="closeDeck">Close</button>
+      </header>
+      ${body}
+    </section>
+  </div>`;
+}
+
 // ---------- fight, rewards, shop, end ----------
+
+const PESTS = new Set(['papermoth', 'inkleech', 'rustwraith']);
 
 function renderFight() {
   const c = combat;
@@ -701,10 +745,11 @@ function renderFight() {
   const hand = c.hand.map(k => {
     const why = canPlay(c, k);
     const react = previewReaction(c, k);
+    const smudged = c.smudged.has(k.uid);
     return cardHtml(k, {
-      cost: effectiveCost(c, k), disabled: !!why, cls: react ? 'reacts' : '',
+      cost: effectiveCost(c, k), disabled: !!why, cls: `${react ? 'reacts' : ''}${smudged ? ' smudged' : ''}`,
       action: `data-act="play" data-uid="${k.uid}" title="${why || (react ? `Cast. Sets off ${REACTIONS[react].name}: ${REACTIONS[react].desc}` : 'Cast')}"`,
-      extra: react ? `<span class="reacttag">${REACTIONS[react].name}</span>` : '',
+      extra: (react ? `<span class="reacttag">${REACTIONS[react].name}</span>` : '') + (smudged ? '<span class="smudgetag">Smudged</span>' : ''),
     });
   }).join('');
   const lastInk = c.lastColors ? `<span class="chip ink">Last ink ${c.lastColors.map(col => `<img class="px inkpip" src="${glyphURL(col)}" alt="${INK_COLORS[col].short}">`).join('')}</span>` : '';
@@ -715,7 +760,7 @@ function renderFight() {
 
   app.innerHTML = `
   <section class="fight">
-    ${hintHtml('fight')}
+    ${hintHtml(c.enemies.some(e => PESTS.has(e.key)) ? 'pests' : 'fight') || hintHtml('fight')}
     <p class="fight-title">${title}</p>
     <div class="enemies">${enemies}</div>
     <div class="table">
@@ -856,6 +901,9 @@ function render() {
     case 'codex': renderCodex(); break;
   }
   if (changed && screen !== 'explore') app.firstElementChild?.classList.add('enter');
+  document.getElementById('deckov')?.remove();
+  if (deckOpen && run && !['title', 'codex', 'won', 'lost'].includes(screen)) document.body.insertAdjacentHTML('beforeend', deckOverlay());
+  else deckOpen = false;
   autosave();
 }
 
@@ -912,6 +960,7 @@ function openNode(node) {
     case 'delve':
       sfx('descend');
       exploreLog = [o.elite ? `You go down. Somewhere ahead, ${ENEMIES[o.elite].name} waits by the way out.` : 'You go down into the dark. Find the way out at the far end.'];
+      if (o.cond) exploreLog.push(`${DELVE_CONDITIONS[o.cond].name}: ${DELVE_CONDITIONS[o.cond].desc}`);
       standingOn = objectAt(run.world, run.world.px, run.world.py);
       screen = 'explore';
       break;
@@ -1055,6 +1104,8 @@ const actions = {
     logExplore(`You take the ${RELICS[id].name}.`);
   },
   codex() { forgetArmed = false; screen = 'codex'; },
+  openDeck() { walkPath = null; deckOpen = true; },
+  closeDeck() { deckOpen = false; },
   hintOk({ id }) { meta.hints ||= { seen: [], off: false }; meta.hints.seen.push(id); saveMeta(meta); },
   hintsOff() { meta.hints ||= { seen: [], off: false }; meta.hints.off = true; saveMeta(meta); },
   pickVariant({ id }) { if (isUnlocked(meta, id)) { selectedVariant = id; sfx('click'); } },
@@ -1238,6 +1289,7 @@ function snapshot(colors = null) {
     enemies: combat.enemies.map(e => ({ hp: e.hp })),
     hp: run.hp, block: combat.player.block,
     reactions: combat.lastReaction?.n,
+    pest: combat.pestEvent?.n,
     worn: combat.wornUp?.n,
   };
 }
@@ -1311,6 +1363,15 @@ function combatFx(before) {
     (app.querySelector('.enemies') || app).appendChild(banner);
     setTimeout(() => banner.remove(), 1800);
   }
+  const pe = combat.pestEvent;
+  if (pe && pe.n !== before.pest) {
+    sfx('burn');
+    const banner = document.createElement('div');
+    banner.className = 'reaction-banner pest-banner';
+    banner.textContent = pe.label;
+    (app.querySelector('.table') || app).appendChild(banner);
+    setTimeout(() => banner.remove(), 1600);
+  }
   const rx = combat.lastReaction;
   if (rx && rx.n !== before.reactions) {
     sfx('react');
@@ -1350,6 +1411,13 @@ const KEYS = {
 document.addEventListener('keydown', e => {
   unlock();
   if (e.target.closest('input,textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (deckOpen) {
+    if (e.key === 'Escape') { deckOpen = false; render(); }
+    return;
+  }
+  if ((e.key === 'v' || e.key === 'V') && run && !['title', 'codex', 'won', 'lost'].includes(screen)) {
+    deckOpen = true; walkPath = null; render(); return;
+  }
   if (screen === 'fight' && (e.key === 'e' || e.key === 'E')) {
     const before = snapshot();
     actions.endTurn(); render();
@@ -1367,6 +1435,6 @@ document.addEventListener('keydown', e => {
 });
 
 // exposed for debugging in the console
-window.spellcrafter = { get run() { return run; }, get combat() { return combat; }, get screen() { return screen; }, walkTo, BLOCKING, availableNodes };
+window.spellcrafter = { get run() { return run; }, get combat() { return combat; }, get screen() { return screen; }, walkTo, BLOCKING, availableNodes, startFight };
 
 render();

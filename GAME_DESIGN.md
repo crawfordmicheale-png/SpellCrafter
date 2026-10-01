@@ -319,6 +319,17 @@ Each act's **elite** guards the way out of its haunted delves. The **guardian** 
 - **Phase 2:** when a guardian or the boss drops to half HP, a banner announces the change. It gains Strength and Block and switches to a harder move set, starting from that set's first move.
 - Phase changes can be triggered by direct damage, the Detonate reaction, or poison ticks.
 
+### 7.7 Pests
+Some monsters go after your cards rather than you. Your hand is discarded before enemies act, so pests reach into your draw and discard piles. **Stone fears none of them.**
+
+| Pest | Found in | What it does |
+|---|---|---|
+| Paper Moth (18 HP) | Chapel Ruins, Last Library | *Devour paper:* a paper card in your piles is gone for the fight and loses 1 use (it can break) |
+| Ink Leech (28 HP) | Drowned Archive, Catacombs, Last Library | *Drain ink:* a crafted paper or wood card works at half strength for the fight |
+| Rust Wraith (34 HP) | Catacombs, Last Library | *Tarnish:* silver and gold cards cost 1 more on your next turn |
+
+Smudged cards show grey in your hand; tarnished costs show in amber.
+
 ---
 
 ## 8. Run Structure
@@ -351,6 +362,16 @@ Each act is a branching map of 8 rows, drawn bottom to top. Four paths climb fro
 | **Guardian** | A boss fight with two phases. Beat it to descend. |
 
 - Delve desks are too exposed to rest at; resting happens at scriptoria.
+
+**Delve conditions.** About two thirds of delves (never the first row) show a condition on the map, as a small badge on the node, so two delves are rarely the same choice.
+
+| Condition | Effect |
+|---|---|
+| ≈ Flooded | Paper cards lose an extra use when cast in fights here. Drowned Kelp everywhere. |
+| ◐ Lightless | The lantern burns twice as fast. Reliquaries hold an extra item, and there is one more of them. |
+| ✝ Ossuary | Bone and grave soil everywhere, 3 more scavenge spots, and encounters are 1.5× as likely. |
+| ▼ Collapsing | 3 fewer rooms, 3 fewer spots, one fewer reliquary. Climbing out clears **all** Dread. |
+| ✧ Hallowed ground | No random encounters, but no writing desk. |
 - Saves remember the map, where you are, and what each node turned out to be.
 
 ### 8.2 The storyline: Sister Vell
@@ -387,6 +408,9 @@ Skipping her counts against her: nobody helped.
 - In fights, cast cards fly out of your hand, enemies shake and flash white when hit and sink when killed, damage and Block numbers rise, and a red vignette flashes when you are hurt.
 - Heavy hits shake the screen (bigger shakes for hits on you and for kills). Cast cards burst into sparks in their ink colors, and scavenging or opening a reliquary throws sparks on the map.
 - Everything respects the reduced-motion setting.
+
+### 9.4 Deck viewer
+The Deck count in the top bar (or the V key) opens your whole deck from anywhere in a run. In a fight it shows your draw pile, discard pile and anything gone for the fight, sorted so it never reveals the draw order. Escape closes it.
 
 ### 9.3 Guided first run
 Short tips appear once each, the first time they matter: exploring, the writing desk, the first fight, low lantern oil, Corruption, and the first guardian. Each one has "Got it" and "Turn off tips". What you've seen is saved with the rest of your progress.
@@ -436,4 +460,5 @@ Decided: random encounters stay as they are (driven by Dread). Lantern oil is in
 9. ~~More events, floor guardians with boss phases, new elites, polish (screen shake, particles, guided first run)~~ (done)
 10. ~~Overworld act maps with branching paths, smaller delves, scriptoria, and the Sister Vell storyline~~ (done)
 11. ~~Simpler crafting: no refining, one rule for a second ink, recipe hints, four-part recipes, signatures and names~~ (done)
-12. Next: playtesting feedback.
+12. ~~Delve conditions on the map, pests that go after your cards, a deck viewer~~ (done)
+13. Next: Depths (difficulty levels after a win) and a guardian pool, playtesting feedback.

@@ -19,6 +19,9 @@ Opening `index.html` straight from disk won't work, because browsers block JavaS
 
 - **Four acts, each a branching map** in the style of Slay the Spire: the Chapel Ruins, the Drowned Archive, the Catacombs, and the Last Library. Pick your path through delves, unknown events, merchants and scriptoria.
 - **Delves:** small dungeons generated fresh each time. Explore by tapping a tile or with WASD or the arrow keys, then find the way out. Haunted delves hold an elite on the way out.
+- **Delve conditions** shown on the map: Flooded, Lightless, Ossuary, Collapsing and Hallowed ground each change what the delve is like.
+- **Pests** that go after your cards: Paper Moths eat paper, Ink Leeches smudge cheap pages, Rust Wraiths tarnish silver and gold.
+- **Deck viewer:** tap Deck in the top bar, or press V, from anywhere in a run.
 - **Scriptoria:** craft, then choose to rest or refill your lantern.
 - **A storyline:** Sister Vell, the Inkbinder who went down before you. How you treat her decides whether she stands with you against the Grimoire, or against you.
 - **Act guardians:** the Bell Warden, the Pale Scrivener, the Ossuary Saint, and finally the Unbound Grimoire wait at the top of each map. At half health each one enters a second phase.

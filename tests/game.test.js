@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { craftCard, validateBlueprint, findRecipe } from '../js/crafting.js';
-import { createCombat, playCard, endTurn } from '../js/combat.js';
+import { createCombat, playCard, endTurn, effectiveCost } from '../js/combat.js';
 import { createRun, craftIntoDeck, salvageCard, reinscribe, mend, descend, burnCard, resurface, rest, gainRelic as gainRelicFor, applyRewards, serializeRun, deserializeRun, enterNode, leaveDelve, campChoice, buyOil, currentNode } from '../js/run.js';
 import { generateMap, availableNodes } from '../js/overworld.js';
 import { generateRegion, findPath, step, isFloor, objectAt, lightRadius } from '../js/world.js';
@@ -704,4 +704,92 @@ test('new events resolve', async () => {
   resolveEvent(run, 'altar', 'blood');
   assert.equal(run.hp, hp - 10);
   assert.equal(run.inventory.ess_pristine, 1);
+});
+
+test('delve conditions show on the map and change the delve', async () => {
+  const { DELVE_CONDITIONS } = await import('../js/data.js');
+  let withCond = 0, delves = 0;
+  for (let seed = 1; seed <= 30; seed++) {
+    const map = generateMap(0, seed);
+    for (const n of map.nodes) {
+      if (n.cond) assert.ok(['delve', 'haunted'].includes(n.type) && n.row > 0 && DELVE_CONDITIONS[n.cond]);
+      if ((n.type === 'delve' || n.type === 'haunted') && n.row > 0) { delves++; if (n.cond) withCond++; }
+    }
+  }
+  assert.ok(withCond / delves > 0.5 && withCond / delves < 0.8, `${withCond}/${delves}`);
+  const plain = generateRegion(0, 5), hallowed = generateRegion(0, 5, { cond: 'hallowed' });
+  assert.ok(plain.objects.some(o => o.type === 'desk'));
+  assert.ok(!hallowed.objects.some(o => o.type === 'desk'));
+  const collapsing = generateRegion(0, 5, { cond: 'collapsing' });
+  assert.ok(collapsing.rooms.length < plain.rooms.length);
+  let kelp = 0, kelpFlooded = 0;
+  for (let seed = 1; seed <= 20; seed++) {
+    kelp += generateRegion(0, seed).objects.filter(o => o.raw === 'kelp').length;
+    kelpFlooded += generateRegion(0, seed, { cond: 'flooded' }).objects.filter(o => o.raw === 'kelp').length;
+  }
+  assert.ok(kelpFlooded > kelp * 2, `${kelpFlooded} vs ${kelp}`);
+});
+
+test('hallowed ground is quiet, lightless burns oil fast, collapsing clears dread', () => {
+  const walk = (cond, steps) => {
+    const run = createRun(40);
+    const w = generateRegion(0, 40, { cond });
+    run.world = w;
+    let met = 0;
+    for (let i = 0; i < steps; i++) {
+      const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => isFloor(w, w.px + dx, w.py + dy) && !objectAt(w, w.px + dx, w.py + dy));
+      if (step(w, run, ...dirs[i % dirs.length], () => 0).encounter) met++;
+    }
+    return { run, met };
+  };
+  assert.equal(walk('hallowed', 200).met, 0);
+  assert.ok(walk(null, 200).met > 0);
+  assert.equal(walk('lightless', 100).run.oil, 60);
+  assert.equal(walk(null, 100).run.oil, 80);
+  const { run } = walk('collapsing', 50);
+  assert.ok(run.dread > 0);
+  leaveDelve(run);
+  assert.equal(run.dread, 0);
+});
+
+test('pests go after paper, cheap ink and metal; stone is safe', () => {
+  const run = createRun(41);
+  Object.assign(run.inventory, { color_red: 3, mat_paper: 2, mat_wood: 1, raw_silver: 2, raw_slate: 2, ink_charcoal: 4 });
+  const paper = craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'paper' }).card;
+  const silver = craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'silver' }).card;
+  const stone = craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'stone' }).card;
+  // Paper Moth: eats a paper card out of the piles for the fight, and wears it.
+  let c = createCombat(run, ['papermoth'], () => 0);
+  c.hand = []; c.drawPile = [paper, stone]; c.discard = [];
+  endTurn(c);
+  assert.ok(c.exhaust.includes(paper));
+  assert.equal(paper.durability, 2);
+  assert.ok(!c.drawPile.includes(paper) && !c.hand.includes(paper));
+  // Ink Leech: a paper or wood card works at half strength.
+  c = createCombat(run, ['inkleech'], () => 0);
+  c.hand = []; c.drawPile = [paper, stone, silver]; c.discard = [];
+  endTurn(c);
+  assert.ok(c.smudged.has(paper.uid));
+  assert.ok(!c.smudged.has(stone.uid) && !c.smudged.has(silver.uid));
+  c.hand.push(paper); c.player.energy = 3;
+  const hp = c.enemies[0].hp, block = c.enemies[0].block;
+  playCard(c, paper.uid, 0);
+  assert.equal(hp + block - c.enemies[0].hp - c.enemies[0].block, 3); // 5 damage halved
+  // Rust Wraith: silver and gold cost 1 more next turn; stone does not.
+  c = createCombat(run, ['rustwraith'], () => 0);
+  endTurn(c);
+  assert.equal(effectiveCost(c, silver), silver.cost + 1);
+  assert.equal(effectiveCost(c, stone), stone.cost);
+  endTurn(c); // its next move is a plain attack
+  assert.equal(effectiveCost(c, silver), silver.cost);
+});
+
+test('flooded delves wear paper twice as fast', () => {
+  const run = createRun(42);
+  Object.assign(run.inventory, { color_red: 1, mat_paper: 1 });
+  const paper = craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'paper' }).card;
+  const c = createCombat(run, ['gravemoth'], () => 0.5, { paperWear: 1 });
+  c.hand.push(paper); c.player.energy = 3;
+  playCard(c, paper.uid, 0);
+  assert.equal(paper.durability, 1);
 });
