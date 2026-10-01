@@ -128,6 +128,11 @@ export function applyWear(card, from, to) {
   if (bonus) for (const e of card.effects) if (GROWS.has(e.type)) e.amount += bonus;
 }
 
+// An exact copy of a card with its own id and a fresh page.
+export function cloneCard(card) {
+  return { ...card, uid: uid(), effects: card.effects.map(e => ({ ...e })), enchants: [...card.enchants], durability: card.maxDurability };
+}
+
 export const wearName = card => (card.wear ? WEAR[card.wear - 1].name : null);
 
 export function makeStarterCard(key) {

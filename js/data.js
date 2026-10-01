@@ -315,8 +315,18 @@ export const ENEMIES = {
     drops: ['raw_kelp', 'raw_kelp', 'raw_silver', 'ench_bound', 'raw_rags', 'raw_wisp'],
   },
   warden: {
-    name: 'The Bell Warden', hp: 42, elite: true,
+    name: 'The Bell Warden', hp: 54, elite: true, guardian: true,
     desc: 'It rang the bell for every funeral. Now it rings for yours.',
+    phase2: {
+      at: 0.5, name: 'The bell cracks',
+      text: 'The great bell splits down the middle. The sound does not stop.',
+      strength: 1, block: 8,
+      moves: [
+        { actions: [{ type: 'attack', amount: 6 }, { type: 'debuff', status: 'weak', amount: 1 }] },
+        { actions: [{ type: 'attack', amount: 4, times: 3 }] },
+        { actions: [{ type: 'block', amount: 8 }, { type: 'buff', status: 'strength', amount: 1 }] },
+      ],
+    },
     moves: [
       { actions: [{ type: 'attack', amount: 9 }] },
       { actions: [{ type: 'block', amount: 8 }, { type: 'debuff', status: 'weak', amount: 1 }] },
@@ -325,8 +335,18 @@ export const ENEMIES = {
     drops: ['ench_echo', 'raw_silver', 'raw_silver', 'raw_heart', 'raw_slate', 'raw_gold', 'raw_ichor'],
   },
   scrivener: {
-    name: 'The Pale Scrivener', hp: 52, elite: true,
+    name: 'The Pale Scrivener', hp: 62, elite: true, guardian: true,
     desc: 'An Inkbinder who wrote one spell too many. The ink wrote back.',
+    phase2: {
+      at: 0.5, name: 'The Scrivener writes back',
+      text: 'Ink pours from its sleeves and starts writing on the walls. Your name is in every line.',
+      strength: 1, block: 10,
+      moves: [
+        { actions: [{ type: 'attack', amount: 7 }, { type: 'debuff', status: 'poison', amount: 3 }] },
+        { actions: [{ type: 'attack', amount: 14 }] },
+        { actions: [{ type: 'block', amount: 12 }, { type: 'debuff', status: 'weak', amount: 2 }] },
+      ],
+    },
     moves: [
       { actions: [{ type: 'attack', amount: 11 }] },
       { actions: [{ type: 'block', amount: 10 }, { type: 'debuff', status: 'weak', amount: 2 }] },
@@ -362,8 +382,18 @@ export const ENEMIES = {
     drops: ['raw_kelp', 'raw_gravesoil', 'ench_bound', 'raw_gold'],
   },
   saint: {
-    name: 'The Ossuary Saint', hp: 58, elite: true,
+    name: 'The Ossuary Saint', hp: 68, elite: true, guardian: true,
     desc: 'Canonised for building the catacombs. He is still adding to them.',
+    phase2: {
+      at: 0.5, name: 'The Saint rises',
+      text: 'The bones of the walls answer him. He stands taller than he should.',
+      strength: 2, block: 12,
+      moves: [
+        { actions: [{ type: 'attack', amount: 8, times: 2 }] },
+        { actions: [{ type: 'block', amount: 14 }, { type: 'buff', status: 'strength', amount: 2 }] },
+        { actions: [{ type: 'attack', amount: 6 }, { type: 'debuff', status: 'poison', amount: 4 }, { type: 'debuff', status: 'weak', amount: 1 }] },
+      ],
+    },
     moves: [
       { actions: [{ type: 'attack', amount: 12 }] },
       { actions: [{ type: 'block', amount: 12 }, { type: 'buff', status: 'strength', amount: 2 }] },
@@ -371,9 +401,50 @@ export const ENEMIES = {
     ],
     drops: ['ench_hallowed', 'ench_hallowed', 'raw_silver', 'raw_gold', 'raw_heart', 'raw_ichor', 'raw_ichor'],
   },
+  gravedigger: {
+    name: 'The Gravedigger', hp: 40, elite: true,
+    desc: 'He has been digging the same grave for forty years. It is nearly your size.',
+    moves: [
+      { actions: [{ type: 'attack', amount: 10 }] },
+      { actions: [{ type: 'block', amount: 8 }, { type: 'attack', amount: 4 }] },
+      { actions: [{ type: 'attack', amount: 3, times: 3 }] },
+    ],
+    drops: ['raw_timber', 'raw_gravesoil', 'raw_heart', 'raw_ichor', 'raw_silver', 'ench_echo'],
+  },
+  abbot: {
+    name: 'The Drowned Abbot', hp: 48, elite: true,
+    desc: 'He still leads the vespers. The congregation is underwater too.',
+    moves: [
+      { actions: [{ type: 'attack', amount: 6 }, { type: 'debuff', status: 'weak', amount: 2 }] },
+      { actions: [{ type: 'attack', amount: 12 }] },
+      { actions: [{ type: 'block', amount: 10 }, { type: 'debuff', status: 'poison', amount: 3 }] },
+    ],
+    drops: ['raw_kelp', 'raw_silver', 'raw_silver', 'raw_ichor', 'ench_bound', 'raw_heart', 'raw_wisp'],
+  },
+  choirmaster: {
+    name: 'The Choirmaster', hp: 54, elite: true,
+    desc: 'He conducts a choir of the dead. Every note is a little louder than the last.',
+    moves: [
+      { actions: [{ type: 'buff', status: 'strength', amount: 2 }, { type: 'attack', amount: 5 }] },
+      { actions: [{ type: 'attack', amount: 4, times: 3 }] },
+      { actions: [{ type: 'debuff', status: 'weak', amount: 2 }, { type: 'block', amount: 12 }] },
+    ],
+    drops: ['ench_echo', 'ench_hallowed', 'raw_ichor', 'raw_gold', 'raw_wisp', 'raw_wisp'],
+  },
   grimoire: {
     name: 'The Unbound Grimoire', hp: 110, boss: true,
     desc: 'The first book. It has been waiting for a new hand to hold it.',
+    phase2: {
+      at: 0.5, name: 'The final page',
+      text: 'The Grimoire tears open to its last page. It is blank, and it is hungry.',
+      strength: 2, block: 15,
+      moves: [
+        { actions: [{ type: 'attack', amount: 18 }] },
+        { actions: [{ type: 'attack', amount: 6 }, { type: 'debuff', status: 'poison', amount: 5 }] },
+        { actions: [{ type: 'attack', amount: 5, times: 4 }] },
+        { actions: [{ type: 'block', amount: 16 }, { type: 'buff', status: 'strength', amount: 3 }] },
+      ],
+    },
     moves: [
       { actions: [{ type: 'attack', amount: 12 }] },
       { actions: [{ type: 'attack', amount: 5 }, { type: 'debuff', status: 'poison', amount: 4 }] },
@@ -393,7 +464,7 @@ export const REGIONS = [
     raws: { ash: 3, bone: 3, rags: 2, timber: 2, gravesoil: 2, bloodroot: 2, moss: 1 },
     nodes: 13, chests: 2,
     encounters: [['acolyte'], ['gravemoth', 'gravemoth'], ['gravemoth'], ['acolyte', 'gravemoth']],
-    elite: 'warden', merchant: true, hpMult: 1, events: 1,
+    elite: 'gravedigger', guardian: 'warden', merchant: true, hpMult: 1, events: 1,
     tiles: { 1: '#2b2430', 2: '#352c3c', 3: '#1d1822', 4: '#4f7a45', 5: '#4a3f50', 6: '#6b5a74', 7: '#2a2230', 8: '#1f1a24', 9: '#231c28' },
   },
   {
@@ -402,7 +473,7 @@ export const REGIONS = [
     raws: { kelp: 3, moss: 2, slate: 2, silver: 2, rags: 2, bloodroot: 1, bone: 1 },
     nodes: 14, chests: 2,
     encounters: [['drowned'], ['drowned', 'gravemoth'], ['hound'], ['ghoul']],
-    elite: 'scrivener', merchant: true, hpMult: 1.1, events: 2,
+    elite: 'abbot', guardian: 'scrivener', merchant: true, hpMult: 1.1, events: 2,
     tiles: { 1: '#1f2a30', 2: '#27363d', 3: '#141c21', 4: '#3f7a6f', 5: '#3a4d56', 6: '#557582', 7: '#1f2c33', 8: '#162027', 9: '#18242a' },
   },
   {
@@ -411,7 +482,7 @@ export const REGIONS = [
     raws: { bone: 3, gravesoil: 3, ash: 2, slate: 2, silver: 1, moss: 1, timber: 1 },
     nodes: 13, chests: 2,
     encounters: [['wraith'], ['boneweaver'], ['wraith', 'acolyte'], ['boneweaver', 'gravemoth']],
-    elite: 'saint', merchant: true, hpMult: 1.2, events: 2,
+    elite: 'choirmaster', guardian: 'saint', merchant: true, hpMult: 1.2, events: 2,
     tiles: { 1: '#2a2826', 2: '#34312d', 3: '#1a1816', 4: '#6b6a4a', 5: '#4d4944', 6: '#79736a', 7: '#2a2724', 8: '#1e1c1a', 9: '#22201e' },
   },
   {
@@ -470,6 +541,42 @@ export const EVENTS = {
       { id: 'leave', label: 'Leave it', desc: '' },
     ],
   },
+  book: {
+    name: 'The Chained Book',
+    text: 'A book chained to a lectern, its pages turning by themselves. It already knows your name.',
+    options: [
+      { id: 'read', label: 'Read it', desc: 'Gain a rare ink (Ichor or Ghostlight). Corruption +2.' },
+      { id: 'burn', label: 'Burn it for light', desc: '+35 lantern oil.' },
+      { id: 'leave', label: 'Leave it chained', desc: '' },
+    ],
+  },
+  corpse: {
+    name: 'The Dead Peddler',
+    text: 'A peddler slumped against the wall, his pack still full. Whatever killed him did not want his wares.',
+    options: [
+      { id: 'search', label: 'Search his pack', desc: 'Probably three raw materials and some gold. Probably.' },
+      { id: 'bury', label: 'Bury him', desc: 'Dread -20.' },
+      { id: 'leave', label: 'Leave him', desc: '' },
+    ],
+  },
+  mirror: {
+    name: 'The Mirror Pool',
+    text: 'Still black water. It shows a version of you who never came down here.',
+    options: [
+      { id: 'gaze', label: 'Gaze into it', desc: 'A copy of one of your crafted cards. Dread +15.' },
+      { id: 'drink', label: 'Drink', desc: 'Heal 15 HP. Corruption +2.' },
+      { id: 'leave', label: 'Look away', desc: '' },
+    ],
+  },
+  altar: {
+    name: 'The Ink-Stained Altar',
+    text: 'An altar black with old ink. A bowl in the middle waits for an offering.',
+    options: [
+      { id: 'card', label: 'Offer a starter card', desc: 'Lose a random starter card. Gain a relic.' },
+      { id: 'blood', label: 'Offer blood', desc: 'Lose 10 HP. Gain Ichor and a Pristine Essence.' },
+      { id: 'leave', label: 'Offer nothing', desc: '' },
+    ],
+  },
   lanterns: {
     name: 'Hanged Lanterns',
     text: 'Lanterns hang from the vault on long chains, still burning. The chains are rusted through.',
@@ -507,4 +614,14 @@ export const VARIANTS = {
     unlock: { type: 'deepest', value: 2, text: 'Reach the Catacombs' },
     start: { gold: 120, inventory: { mat_gold: 1, ink_gold: 1 }, oilMax: 70, oil: 70 },
   },
+};
+
+// Tips for a first run. Each shows once, and the player can turn them all off.
+export const HINTS = {
+  explore: 'Tap a tile or use WASD to walk. The writing desk with the candle is close by: that is where you refine and craft. Scavenge the marked spots on the way.',
+  desk: 'Refine raw materials on the Refine tab first. Then Inscribe a card: pick a card material, an ink color and an ink material. Monster parts add enchantments.',
+  fight: 'You get 3 mana each turn, and enemies show what they will do next. Cast crafted cards of different inks back to back to set off reactions.',
+  lantern: 'Your lantern is running low and the dark is closing in. Burn a card for oil, or climb back to the surface from the stairs up.',
+  corruption: 'Blood and ichor are corrupting you. At 5 you are Tainted, at 10 Forsaken. Rest at desks or pray at shrines to cleanse it.',
+  guardian: 'A guardian stands on the stairs down. You have to beat it to go deeper. Craft before you face it.',
 };

@@ -466,3 +466,61 @@ test('ghostlight ink costs one less', () => {
   const g = craftCard({ colors: ['red'], inkMat: 'ghostlight', cardMat: 'paper' });
   assert.equal(g.cost, 0);
 });
+
+test('bosses change phase at half health', async () => {
+  const { currentMove } = await import('../js/combat.js');
+  const run = createRun(11);
+  const c = createCombat(run, ['warden'], seq(0.99));
+  const e = c.enemies[0];
+  assert.equal(e.maxHp, 54);
+  const firstMove = currentMove(e);
+  c.player.energy = 99;
+  const strike = run.deck.find(k => k.starter === 'strike');
+  while (e.hp > e.maxHp / 2) { c.hand.push(strike); playCard(c, strike.uid); }
+  assert.equal(e.phase, 1);
+  assert.equal(e.strength, 1);
+  assert.ok(e.block >= 8);
+  assert.notDeepEqual(currentMove(e), firstMove);
+  assert.equal(c.phaseEvent.name, 'The bell cracks');
+});
+
+test('each floor but the last has a guardian on the stairs', () => {
+  for (let r = 0; r < REGIONS.length; r++) {
+    const w = generateRegion(r, 4);
+    const exit = w.objects.find(o => o.type === 'exit');
+    if (REGIONS[r].boss) assert.equal(exit, undefined);
+    else assert.equal(exit.guard, REGIONS[r].guardian);
+  }
+});
+
+test('new events resolve', async () => {
+  const { resolveEvent } = await import('../js/events.js');
+  const run = createRun(12);
+  let r = resolveEvent(run, 'book', 'read', () => 0);
+  assert.equal(run.inventory.ink_ichor, 1);
+  assert.equal(run.corruption, 2);
+  run.oil = 10;
+  resolveEvent(run, 'book', 'burn');
+  assert.equal(run.oil, 45);
+  r = resolveEvent(run, 'corpse', 'search', () => 0.9);
+  assert.equal(r.items.length, 3);
+  assert.ok(resolveEvent(run, 'corpse', 'search', () => 0.1).fight);
+  run.dread = 30;
+  resolveEvent(run, 'corpse', 'bury');
+  assert.equal(run.dread, 10);
+  Object.assign(run.inventory, { color_red: 1, mat_wood: 1 });
+  craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'wood' });
+  const before = run.deck.length;
+  r = resolveEvent(run, 'mirror', 'gaze', () => 0);
+  assert.equal(run.deck.length, before + 1);
+  const [a, b] = run.deck.filter(k => k.crafted);
+  assert.notEqual(a.uid, b.uid);
+  assert.equal(a.name, b.name);
+  r = resolveEvent(run, 'altar', 'card', () => 0);
+  assert.ok(r.relic);
+  assert.equal(run.deck.length, before);
+  const hp = run.hp;
+  resolveEvent(run, 'altar', 'blood');
+  assert.equal(run.hp, hp - 10);
+  assert.equal(run.inventory.ess_pristine, 1);
+});

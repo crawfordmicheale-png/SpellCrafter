@@ -18,7 +18,8 @@ Opening `index.html` straight from disk won't work, because browsers block JavaS
 ### What's in it
 
 - **Four dungeon floors** that are generated fresh each run: the Chapel Ruins, the Drowned Archive, the Catacombs, and the Last Library where the boss waits. Explore by tapping a tile or with WASD or the arrow keys.
-- **Scavenging:** raw materials from the environment, reliquary boxes, and a guardian elite on each floor.
+- **Scavenging:** raw materials from the environment, reliquary boxes, and an elite on each floor.
+- **Floor guardians:** a boss stands on each floor's stairs down: the Bell Warden, the Pale Scrivener, the Ossuary Saint, and finally the Unbound Grimoire. At half health each one enters a second phase.
 - **Dread:** the longer you wander, the more often monsters find you.
 - **Lantern oil:** your light shrinks as oil runs low. Burn a card for oil, or climb back to the surface to refill.
 - **Hand-drawn pixel art** for the Inkbinder, dungeon tiles, scavenge spots, enemies, and the ink glyphs on cards.
@@ -31,8 +32,9 @@ Opening `index.html` straight from disk won't work, because browsers block JavaS
 - **Ink reactions:** cast inscribed cards of different inks back to back to set off Storm, Brand, Hexfire and seven more.
 - **Relics:** ten passive trinkets from elites, reliquaries and the merchant.
 - **Autosave:** close the tab and pick up where you left off from the title screen.
-- **Random events** with choices: Candle Shrine, Trapped Scribe, Ink Well, Hanged Lanterns.
-- **Animation and synthesized sound:** smooth movement, hit effects, floating numbers, and a per-floor ambient drone. Toggle sound in the top bar.
+- **Random events** with choices: Candle Shrine, Trapped Scribe, Ink Well, Hanged Lanterns, Chained Book, Dead Peddler, Mirror Pool, Ink-Stained Altar.
+- **Animation and synthesized sound:** smooth movement, hit effects, floating numbers, screen shake, ink-colored particles, and a per-floor ambient drone. Toggle sound in the top bar.
+- **Guided first run:** one-time tips the first time you explore, craft, fight, run low on oil, or meet a guardian.
 
 ### Code layout
 

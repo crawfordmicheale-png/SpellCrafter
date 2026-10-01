@@ -95,7 +95,7 @@ export function generateRegion(regionIdx, seed) {
   // The way back up to the surface is where you arrive.
   world.objects.push({ id: nextId++, type: 'up', x: world.px, y: world.py });
   if (region.boss) place('boss', exitRoom.cx, exitRoom.cy, { enemy: region.boss });
-  else place('exit', exitRoom.cx, exitRoom.cy);
+  else place('exit', exitRoom.cx, exitRoom.cy, { guard: region.guardian || null });
 
   // The desk sits close to the start so you can craft early, the merchant further in.
   const nearStart = rooms.slice(1).filter(r => r !== exitRoom)
