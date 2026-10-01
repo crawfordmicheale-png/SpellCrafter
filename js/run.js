@@ -1,9 +1,9 @@
 import {
-  ENEMIES, INGREDIENTS, PRICES, REGIONS, STARTER_DECK, STARTING_INVENTORY, PLAYER_START, REFINING,
+  ENEMIES, INGREDIENTS, PRICES, REGIONS, STARTER_DECK, STARTING_INVENTORY, PLAYER_START, PICKUP,
   CARD_MATERIALS, BENCH_REST_HEAL, RAW_MATERIALS, DESCEND_HEAL, LANTERN, RELICS, RELIC_PRICE, CHEST_RELIC_CHANCE,
   VARIANTS, CORRUPTION, EVENTS, MAP, DELVE, CAMP, OIL_WARE,
 } from './data.js';
-import { makeStarterCard, craftCard, validateBlueprint, blueprintIngredients, salvageRoll, ensureUidAbove, applyWear } from './crafting.js';
+import { makeStarterCard, craftCard, validateBlueprint, salvageRoll, ensureUidAbove, applyWear, gainItem, spendPlan, applySignature } from './crafting.js';
 import { generateRegion, lightRadius, reveal } from './world.js';
 import { generateMap, availableNodes, guardianOf } from './overworld.js';
 import { lastBeat } from './events.js';
@@ -13,7 +13,7 @@ export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecip
     ...PLAYER_START,
     seed,
     deck: STARTER_DECK.map(makeStarterCard),
-    inventory: { ...STARTING_INVENTORY },
+    inventory: {},
     grimoire: new Set(knownRecipes), // recipe ids known, including ones from earlier runs
     dread: 0,
     oil: LANTERN.max,
@@ -31,7 +31,8 @@ export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecip
   };
   const { inventory = {}, relics = [], ...rest } = VARIANTS[variant]?.start || {};
   Object.assign(run, rest);
-  for (const [id, n] of Object.entries(inventory)) run.inventory[id] = (run.inventory[id] || 0) + n;
+  for (const [id, n] of Object.entries({ ...STARTING_INVENTORY })) gainItem(run.inventory, id, n);
+  for (const [id, n] of Object.entries(inventory)) gainItem(run.inventory, id, n);
   for (const id of relics) gainRelic(run, id);
   run.map = generateMap(0, seed);
   return run;
@@ -226,8 +227,9 @@ export function descend(run) {
   return { heal: run.hp - before };
 }
 
+// Returns the ids actually added (finds turn into ingredients as you pick them up).
 export function addItem(run, id, n = 1) {
-  run.inventory[id] = (run.inventory[id] || 0) + n;
+  return gainItem(run.inventory, id, n);
 }
 
 export function removeItem(run, id, n = 1) {
@@ -235,37 +237,21 @@ export function removeItem(run, id, n = 1) {
   if (run.inventory[id] <= 0) delete run.inventory[id];
 }
 
-const has = (run, needs) => Object.entries(needs).every(([id, n]) => (run.inventory[id] || 0) >= n);
 
 // Spends ingredients and adds the new card to the deck. Returns { card } or { error }.
 export function craftIntoDeck(run, bp) {
-  const error = validateBlueprint(bp, run.inventory);
+  const error = validateBlueprint(bp, run.inventory, run.hp);
   if (error) return { error };
+  const plan = spendPlan(bp, run.inventory, run.hp);
   const card = craftCard(bp, { corruption: run.corruption });
   if (card.cardMat === 'paper' && hasRelic(run, 'thimble')) { card.durability += 2; card.maxDurability += 2; }
   if (bp.inkMat === 'blood') run.corruption += CORRUPTION.craftBlood;
-  for (const id of blueprintIngredients(bp)) removeItem(run, id);
+  for (const [id, n] of Object.entries(plan.items)) removeItem(run, id, n);
+  if (plan.hp) { run.hp -= plan.hp; run.corruption += CORRUPTION.bleed; }
   run.deck.push(card);
   const discovered = card.recipeId && !run.grimoire.has(card.recipeId);
   if (card.recipeId) run.grimoire.add(card.recipeId);
-  return { card, discovered };
-}
-
-export function canRefine(run, recipe) {
-  if (recipe.hpCost && run.hp <= recipe.hpCost) return 'You are too weak to bleed.';
-  if (!has(run, recipe.from)) return 'Missing materials.';
-  return null;
-}
-
-export function refine(run, recipeId) {
-  const recipe = REFINING.find(r => r.id === recipeId);
-  const error = canRefine(run, recipe);
-  if (error) return { error };
-  for (const [id, n] of Object.entries(recipe.from)) removeItem(run, id, n);
-  if (recipe.hpCost) run.hp -= recipe.hpCost;
-  if (recipe.id === 'bleed') run.corruption += CORRUPTION.bleed;
-  for (const [id, n] of Object.entries(recipe.to)) addItem(run, id, n);
-  return { made: recipe.to };
+  return { card, discovered, bled: plan.hp };
 }
 
 // Adds an enchantment to a card you already own. The card is rebuilt so
@@ -285,7 +271,10 @@ export function reinscribe(run, cardUid, enchant) {
   Object.assign(card, {
     ...fresh, uid: card.uid, casts: card.casts || 0, wear: card.wear || 0,
     durability: Math.min(card.durability, fresh.maxDurability),
+    signature: card.signature || null, signaturePending: !!card.signaturePending, customName: card.customName || null,
   });
+  applySignature(card);
+  if (card.customName) card.name = card.customName;
   return { card, discovered };
 }
 
@@ -293,9 +282,9 @@ export function reinscribe(run, cardUid, enchant) {
 export function mend(run, cardUid) {
   const card = run.deck.find(k => k.uid === cardUid);
   if (!card || !Number.isFinite(card.durability) || card.durability >= card.maxDurability) return { error: 'Nothing to mend.' };
-  const mat = `mat_${card.cardMat}`;
-  if (!run.inventory[mat]) return { error: `You need a ${INGREDIENTS[mat].name} to mend it.` };
-  removeItem(run, mat);
+  const plan = spendPlan({ cardMat: card.cardMat }, run.inventory);
+  if (plan.error) return { error: `You need a ${INGREDIENTS[`mat_${card.cardMat}`].name} to mend it.` };
+  for (const [id, n] of Object.entries(plan.items)) removeItem(run, id, n);
   card.durability = card.maxDurability;
   return { card };
 }
@@ -340,8 +329,7 @@ export function rollRewards(enemyKeys, { elite = false, boss = false, dice = fal
 export function scavenge(run, node) {
   const id = `raw_${node.raw}`;
   const amount = node.pristine ? node.amount * 2 : node.amount;
-  addItem(run, id, amount);
-  const items = Array(amount).fill(id);
+  const items = addItem(run, id, amount);
   if (node.pristine) { addItem(run, 'ess_pristine'); items.push('ess_pristine'); }
   node.gone = true;
   return { items, pristine: !!node.pristine };
@@ -353,7 +341,7 @@ export function openChest(run, chest, rng = Math.random) {
   const items = [pick(CHEST_LOOT, rng)];
   if (rng() < 0.5) items.push(pick(Object.keys(RAW_MATERIALS).filter(k => k !== 'heart').map(k => `raw_${k}`), rng));
   const gold = 10 + Math.floor(rng() * 20);
-  for (const id of items) addItem(run, id);
+  const got = items.flatMap(id => addItem(run, id));
   run.gold += gold;
   chest.gone = true;
   let relic = null;
@@ -361,11 +349,11 @@ export function openChest(run, chest, rng = Math.random) {
     relic = relicChoices(run, 1, rng)[0];
     gainRelic(run, relic);
   }
-  return { items, gold, relic };
+  return { items: got, gold, relic };
 }
 
 export function applyRewards(run, rewards) {
-  for (const id of rewards.items) addItem(run, id);
+  rewards.items = rewards.items.flatMap(id => addItem(run, id));
   run.gold += rewards.gold;
   if (hasRelic(run, 'candle')) {
     const before = run.hp;
@@ -375,7 +363,8 @@ export function applyRewards(run, rewards) {
 }
 
 export function rollShop(rng = Math.random, run = null) {
-  const ids = Object.keys(INGREDIENTS).filter(id => id !== 'raw_heart');
+  // Ready-made ingredients, plus slate, silver and gold. Never loose finds.
+  const ids = Object.keys(INGREDIENTS).filter(id => !PICKUP[id]);
   const stock = new Set();
   while (stock.size < 9) stock.add(pick(ids, rng));
   const wares = [...stock].map(id => ({ id, price: PRICES[INGREDIENTS[id].rarity], sold: false }));

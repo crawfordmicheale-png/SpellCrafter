@@ -1,5 +1,5 @@
 import { EVENTS, STORY, STORY_ALLY_TRUST, ENCHANTMENTS, INK_COLORS, RECIPES, REGIONS, LANTERN, CORRUPTION, RAW_MATERIALS, RELICS } from './data.js';
-import { cloneCard } from './crafting.js';
+import { cloneCard, gainItem, refinedIds } from './crafting.js';
 import { lightRadius, reveal } from './world.js';
 
 const pick = (arr, rng) => arr[Math.floor(rng() * arr.length)];
@@ -30,7 +30,7 @@ export function lastBeat(run) {
 
 // Story beats. Same shape of result as events, plus `story` flags for the guardian fight.
 function resolveStory(run, beat, opt, rng) {
-  const add = (id, n = 1) => { run.inventory[id] = (run.inventory[id] || 0) + n; };
+  const add = (id, n = 1) => gainItem(run.inventory, id, n);
   const st = run.story ||= { trust: 0, met: [] };
   const trust = n => { st.trust += n; };
   st.met.push(beat);
@@ -124,8 +124,13 @@ function resolveStory(run, beat, opt, rng) {
 // A returned `relic` id is for the caller to grant (run.js owns relic effects).
 // `learned` is a recipe id newly added to the Grimoire.
 export function resolveEvent(run, eventId, optionId, rng = Math.random) {
-  if (STORY[eventId]) return resolveStory(run, eventId, optionId, rng);
-  const add = (id, n = 1) => { run.inventory[id] = (run.inventory[id] || 0) + n; };
+  const r = STORY[eventId] ? resolveStory(run, eventId, optionId, rng) : resolvePlainEvent(run, eventId, optionId, rng);
+  if (r.items) r.items = refinedIds(r.items); // show what the finds became
+  return r;
+}
+
+function resolvePlainEvent(run, eventId, optionId, rng) {
+  const add = (id, n = 1) => gainItem(run.inventory, id, n);
   switch (`${eventId}:${optionId}`) {
     case 'shrine:pray': {
       const before = run.hp;

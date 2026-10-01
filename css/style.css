@@ -551,3 +551,18 @@ button.linkish { background: none; border: none; color: var(--muted); text-decor
   .ownode.t-guardian .portrait { width: 52px; height: 52px; }
 }
 @media (prefers-reduced-motion: reduce) { .ownode.open, .owmap line.open { animation: none; } }
+
+/* ---------- crafting: hints, signatures, names ---------- */
+.inkstir { margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid #8e5fb0; background: #2a1f33; font-size: .9rem; animation: stir 2.4s ease-in-out infinite; }
+.inkstir b { color: #c3a2de; font-family: var(--f-label); font-weight: normal; }
+@keyframes stir { 0%, 100% { box-shadow: 0 0 0 #8e5fb000; } 50% { box-shadow: 0 0 14px #8e5fb055; } }
+.ing small { margin-left: 4px; }
+.tag.sig { color: var(--rare); border-color: var(--brass-dim); }
+.cardacts .sig { display: grid; gap: 2px; text-align: left; width: 100%; padding: 6px 8px; border-color: var(--brass-dim); }
+.cardacts .sig b { color: var(--rare); font-weight: normal; font-family: var(--f-label); }
+.cardacts .sig small { color: var(--muted); font-size: .72rem; }
+.rename { display: flex; gap: 4px; width: 100%; }
+.rename input { flex: 1; min-width: 0; padding: 3px 6px; font: inherit; font-size: .8rem; background: #0006; color: var(--text); border: 1px solid var(--line); border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) { .inkstir { animation: none; } }
+.deckcard .cardacts { width: 100%; max-width: var(--card-w); }
+.rename input { width: 0; }

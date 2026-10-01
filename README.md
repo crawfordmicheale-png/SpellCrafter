@@ -25,10 +25,12 @@ Opening `index.html` straight from disk won't work, because browsers block JavaS
 - **Dread:** the longer you wander, the more often monsters find you.
 - **Lantern oil:** your light shrinks as oil runs low. Burn a card for oil, or climb back to the surface to refill.
 - **Hand-drawn pixel art** for the Inkbinder, dungeon tiles, scavenge spots, enemies, and the ink glyphs on cards.
-- **Writing desks:** refine raw materials, craft cards with a live preview, add monster parts to existing cards, mend worn cards, salvage, and rest.
+- **Writing desks:** craft cards with a live preview, add monster parts to existing cards, mend worn cards and salvage. What you scavenge is ready to use; slate, silver and gold are spent as you inscribe. When the ink stirs, you are one part from a named spell.
+- **A second ink** on any card costs 1 more mana and builds that pair's reaction into the card.
+- **Signatures:** rename the cards you cast most, and give each Heirloom a signature (Weightless, Unfading or Resonant).
 - **Monster parts are enchantments** (Moth Wing = Swift, Hound Fang = Leech, and so on).
 - **Durability:** paper and wood cards wear out across the run. Stone, silver and gold are permanent.
-- **Thirteen hidden recipes** (two of them forbidden), recorded in a Grimoire that is saved in your browser and carries over between runs.
+- **Thirteen hidden recipes** of up to four parts each (two of them forbidden), recorded in a Grimoire that is saved in your browser and carries over between runs.
 - **Four Inkbinders** to unlock: the Inkbinder, Bloodscribe, Ash Monk and Gilded Heretic.
 - **Deeper crafting:** rare inks (Ichor, Ghostlight), glinting pristine finds, cards that become Well-Worn and Heirlooms, and Corruption, which unlocks forbidden recipes.
 - **Ink reactions:** cast inscribed cards of different inks back to back to set off Storm, Brand, Hexfire and seven more.
@@ -43,9 +45,9 @@ Opening `index.html` straight from disk won't work, because browsers block JavaS
 | File | What it does |
 |---|---|
 | `js/data.js` | All tunable numbers: ingredients, enemies, recipes, the run path |
-| `js/crafting.js` | Turns a blueprint into a card |
+| `js/crafting.js` | Turns a blueprint into a card; pickups, recipe hints, signatures |
 | `js/combat.js` | Fight rules |
-| `js/run.js` | Run state: map moves, inventory, refining, re-inscribe, mend, camps, rewards, shop, salvage |
+| `js/run.js` | Run state: map moves, inventory, crafting, re-inscribe, mend, camps, rewards, shop, salvage |
 | `js/overworld.js` | The branching act maps |
 | `js/world.js` | Delve generation, fog of war, pathfinding, random encounters |
 | `js/explore-view.js` | Draws the dungeon on a canvas |
