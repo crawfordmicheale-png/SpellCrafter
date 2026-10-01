@@ -1,10 +1,12 @@
 import {
   ENEMIES, INGREDIENTS, PRICES, REGIONS, STARTER_DECK, STARTING_INVENTORY, PLAYER_START, REFINING,
   CARD_MATERIALS, BENCH_REST_HEAL, RAW_MATERIALS, DESCEND_HEAL, LANTERN, RELICS, RELIC_PRICE, CHEST_RELIC_CHANCE,
-  VARIANTS, CORRUPTION,
+  VARIANTS, CORRUPTION, EVENTS, MAP, DELVE, CAMP, OIL_WARE,
 } from './data.js';
 import { makeStarterCard, craftCard, validateBlueprint, blueprintIngredients, salvageRoll, ensureUidAbove, applyWear } from './crafting.js';
 import { generateRegion, lightRadius, reveal } from './world.js';
+import { generateMap, availableNodes, guardianOf } from './overworld.js';
+import { lastBeat } from './events.js';
 
 export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecipes = [], variant = 'inkbinder') {
   const run = {
@@ -17,7 +19,10 @@ export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecip
     oil: LANTERN.max,
     regionIdx: 0,
     world: null,
+    map: null,
     salvagedHere: false,
+    story: { trust: 0, met: [] },
+    seenEvents: [],
     relics: [],
     variant,
     corruption: 0,
@@ -28,7 +33,7 @@ export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecip
   Object.assign(run, rest);
   for (const [id, n] of Object.entries(inventory)) run.inventory[id] = (run.inventory[id] || 0) + n;
   for (const id of relics) gainRelic(run, id);
-  enterWorld(run, generateRegion(0, seed));
+  run.map = generateMap(0, seed);
   return run;
 }
 
@@ -106,13 +111,119 @@ export function resurface(run) {
 
 export const currentRegion = run => REGIONS[run.regionIdx];
 
+// ---------- the overworld map ----------
+
+export const currentNode = run => (run.map?.pos != null ? run.map.nodes[run.map.pos] : null);
+
+const pickFrom = (arr, rng) => arr[Math.floor(rng() * arr.length)];
+
+// Move to a node on the map. Returns what is there:
+//   { type: 'delve' } (run.world is now set) | { type: 'shop' } | { type: 'camp' }
+//   | { type: 'event', event } | { type: 'story', event } | { type: 'cache', items, gold, relic? }
+//   | { type: 'fight', enemies, kind }
+// The outcome is stored on the node, so reloading a save lands in the same place.
+export function enterNode(run, nodeId, rng = Math.random) {
+  const map = run.map;
+  const node = map.nodes[nodeId];
+  if (!node || !availableNodes(map).includes(node)) return { error: 'You cannot reach that from here.' };
+  map.pos = node.id;
+  map.visited.push(node.id);
+  node.outcome = resolveNode(run, node, rng);
+  return node.outcome;
+}
+
+function unseenEvents(run) {
+  const pool = Object.keys(EVENTS).filter(id => !run.seenEvents.includes(id));
+  return pool.length ? pool : Object.keys(EVENTS);
+}
+
+function resolveNode(run, node, rng) {
+  const region = currentRegion(run);
+  const seed = run.seed + run.regionIdx * 7919 + node.id * 131;
+  switch (node.type) {
+    case 'delve':
+    case 'haunted': {
+      const elite = node.type === 'haunted' ? pickFrom(region.elites, rng) : null;
+      const world = generateRegion(run.regionIdx, seed, { elite, events: unseenEvents(run) });
+      for (const o of world.objects) if (o.type === 'event') run.seenEvents.push(o.event);
+      enterWorld(run, world);
+      return { type: 'delve', elite };
+    }
+    case 'shop':
+      node.stock = rollShop(rng, run);
+      return { type: 'shop' };
+    case 'camp':
+      return { type: 'camp' };
+    case 'story': {
+      const beat = ['vell1', 'vell2', 'vell3'][run.regionIdx] || lastBeat(run);
+      return { type: 'story', event: beat };
+    }
+    case 'guardian':
+      return { type: 'fight', enemies: [guardianOf(run.regionIdx)], kind: region.boss ? 'boss' : 'guardian' };
+    case 'unknown': {
+      const r = rng();
+      if (r < MAP.unknown.ambush) return { type: 'fight', enemies: pickFrom(region.encounters, rng), kind: 'random' };
+      if (r < MAP.unknown.ambush + MAP.unknown.cache) {
+        const loot = openChest(run, {}, rng);
+        return { type: 'cache', ...loot };
+      }
+      const event = pickFrom(unseenEvents(run), rng);
+      run.seenEvents.push(event);
+      return { type: 'event', event };
+    }
+  }
+  return { type: 'none' };
+}
+
+// Climb out of a delve and back onto the map. The open air eases your Dread.
+export function leaveDelve(run) {
+  run.world = null;
+  const before = run.dread;
+  run.dread = Math.floor(run.dread * DELVE.leaveDread);
+  return { eased: before - run.dread };
+}
+
+// At a scriptorium you may rest or refill your lantern, not both.
+export function campChoice(run, node, choice) {
+  if (node.campUsed) return { error: 'You have already made your choice here.' };
+  if (choice === 'rest') {
+    const before = run.hp;
+    run.hp = Math.min(run.maxHp, run.hp + Math.round(run.maxHp * CAMP.heal));
+    run.dread = Math.max(0, run.dread - CAMP.dread);
+    const cleansed = Math.min(run.corruption || 0, CAMP.corruption);
+    run.corruption -= cleansed;
+    node.campUsed = 'rest';
+    return { heal: run.hp - before, cleansed };
+  }
+  if (choice === 'oil') {
+    if (run.oil >= oilMax(run)) return { error: 'Your lantern is already full.' };
+    const before = run.oil;
+    run.oil = oilMax(run);
+    node.campUsed = 'oil';
+    return { oil: run.oil - before };
+  }
+  return { error: 'Unknown choice.' };
+}
+
+export function buyOil(run) {
+  if (run.gold < OIL_WARE.price) return { error: 'Not enough gold.' };
+  if (run.oil >= oilMax(run)) return { error: 'Your lantern is already full.' };
+  run.gold -= OIL_WARE.price;
+  const before = run.oil;
+  run.oil = Math.min(oilMax(run), run.oil + OIL_WARE.oil);
+  return { oil: run.oil - before };
+}
+
+// After the guardian falls: on to the next act and a fresh map.
 export function descend(run) {
   run.regionIdx++;
-  enterWorld(run, generateRegion(run.regionIdx, run.seed + run.regionIdx * 7919));
+  run.world = null;
+  run.map = generateMap(run.regionIdx, run.seed);
   run.dread = Math.floor(run.dread / 2);
   const heal = Math.round(run.maxHp * DESCEND_HEAL);
+  const before = run.hp;
   run.hp = Math.min(run.maxHp, run.hp + heal);
-  return { heal };
+  return { heal: run.hp - before };
 }
 
 export function addItem(run, id, n = 1) {
@@ -282,25 +393,29 @@ export function serializeRun(run, resume = {}) {
     ...run,
     grimoire: [...run.grimoire],
     deck: run.deck.map(k => ({ ...k, durability: fin(k.durability), maxDurability: fin(k.maxDurability) })),
-    world: { ...w, tiles: Array.from(w.tiles), seen: Array.from(w.seen).join('') },
+    world: w ? { ...w, tiles: Array.from(w.tiles), seen: Array.from(w.seen).join('') } : null,
   };
-  return JSON.stringify({ v: 1, run: data, resume });
+  return JSON.stringify({ v: SAVE_VERSION, run: data, resume });
 }
+
+const SAVE_VERSION = 2; // 2: the overworld map
 
 const fin = n => (Number.isFinite(n) ? n : 'inf');
 const unfin = n => (n === 'inf' ? Infinity : n);
 
 export function deserializeRun(text) {
   const { v, run, resume } = JSON.parse(text);
-  if (v !== 1) throw new Error('Unknown save version');
+  if (v !== SAVE_VERSION) throw new Error('Unknown save version');
   run.grimoire = new Set(run.grimoire);
   run.relics ||= [];
   run.corruption ||= 0;   // saves from before Corruption existed
   run.perks ||= [];
   run.variant ||= 'inkbinder';
   run.deck = run.deck.map(k => ({ ...k, durability: unfin(k.durability), maxDurability: unfin(k.maxDurability) }));
-  run.world.tiles = Uint8Array.from(run.world.tiles);
-  run.world.seen = Uint8Array.from(run.world.seen, ch => +ch);
+  if (run.world) {
+    run.world.tiles = Uint8Array.from(run.world.tiles);
+    run.world.seen = Uint8Array.from(run.world.seen, ch => +ch);
+  }
   ensureUidAbove(Math.max(0, ...run.deck.map(k => +k.uid.slice(1))));
   return { run, resume };
 }

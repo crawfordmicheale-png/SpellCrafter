@@ -1,4 +1,4 @@
-# SpellCrafter — Game Design Doc (v0.1)
+# SpellCrafter — Game Design Doc (v0.2)
 
 **Genre:** Single-player roguelike deckbuilder (digital)
 **Hook:** You don't draft cards, you *craft* them. Every spell in your deck is built from ingredients you collect over a run.
@@ -19,18 +19,19 @@ Other names considered for the player class: Glyphwright, Scrivener, Hexscribe, 
 ## 1. Core Loop
 
 ```
-Explore a floor ──→ Scavenge raw materials ──→ Writing desk: refine → craft → re-inscribe
-      │                     ↑                                   │
-      └── random encounters ┘  (monster parts = enchantments)   ↓
-                                                   Stairs down → next floor → the Grimoire
+Act map: pick a node ──→ Delve: scavenge, fight what finds you, craft at the desk ──→ climb out
+     ↑                   Event / Merchant / Scriptorium / Sister Vell                      │
+     └──────────────────────────────────────────────────────────────────────────────────────┘
+                     ... until the guardian at the top of the map → next act → the Grimoire
 ```
 
-1. Explore a procedurally generated, top-down dungeon floor by lantern light.
-2. Scavenge **raw materials** from the environment (ash heaps, ossuaries, silver veins, gilded tomes).
+1. Each act has a branching **map**, like Slay the Spire. Pick the next node along the lines.
+2. Most nodes are **delves**: small top-down dungeons explored by lantern light. Scavenge **raw materials**, open reliquaries, and find the way out.
 3. Wandering builds **Dread**, and random encounters get more likely. Monsters drop **monster parts**, which are enchantments.
-4. At a **writing desk**, refine raws into ingredients, craft new cards, add enchantments to existing cards, mend worn ones, and rest.
-5. Find the stairs and descend. The third floor holds the Unbound Grimoire.
-6. Die → run ends. Discovered recipes carry over (planned).
+4. At a delve's **writing desk**, refine raws into ingredients, craft new cards, add enchantments to existing cards and mend worn ones.
+5. Other nodes are events, merchants, scriptoria (rest or refuel) and meetings with **Sister Vell**.
+6. Beat the act's guardian at the top of the map and descend. The fourth act ends with the Unbound Grimoire.
+7. Die → run ends. Discovered recipes carry over.
 
 ---
 
@@ -108,14 +109,14 @@ Enchantments are **monster parts**. You can only get one by killing (or finding)
 ## 4. Getting Ingredients
 
 ### 4.1 Scavenging (exploration)
-Each floor is a top-down dungeon with fog of war and a lantern radius. Scavenge spots hold **raw materials** themed to the floor:
+Each delve is a top-down dungeon with fog of war and a lantern radius. Scavenge spots hold **raw materials** themed to the floor:
 
-| Floor | Common finds | Rare finds | Elite | Merchant |
-|---|---|---|---|---|
-| The Chapel Ruins | Ash, Bone Shards, Rotten Vestments, Old Timber, Grave Soil | Bloodroot, Grave Moss | The Bell Warden | Yes |
-| The Drowned Archive | Drowned Kelp, Grave Moss, Rotten Vestments | Slate, Silver Ore | The Pale Scrivener | Yes |
-| The Catacombs | Bone Shards, Grave Soil, Ash | Slate, Silver Ore | The Ossuary Saint | Yes |
-| The Last Library | Bloodroot, Grave Soil | Gold Leaf, Silver Ore, Slate | (Boss) | No |
+| Act | Common finds | Rare finds | Haunted-delve elite |
+|---|---|---|---|
+| The Chapel Ruins | Ash, Bone Shards, Rotten Vestments, Old Timber, Grave Soil | Bloodroot, Grave Moss | The Gravedigger |
+| The Drowned Archive | Drowned Kelp, Grave Moss, Rotten Vestments | Slate, Silver Ore | The Drowned Abbot |
+| The Catacombs | Bone Shards, Grave Soil, Ash | Slate, Silver Ore | The Choirmaster |
+| The Last Library | Bloodroot, Grave Soil | Gold Leaf, Silver Ore, Slate | Any of the three |
 
 Reliquary boxes (chests) hold gold plus rare raws or monster parts. The elite guards a room and drops rare materials, including **Heartblood**.
 
@@ -136,7 +137,7 @@ Raw materials must be refined before they can be crafted. Some refining is a rea
 
 ### 4.3 Random encounters and Dread
 - Every step on open floor adds 1 **Dread**. After a short grace period, each step has a chance to trigger a fight: 2% + 0.03% per Dread, capped at 9%.
-- Resting at a desk calms Dread by 30. Descending halves it.
+- Climbing out of a delve halves Dread. Resting at a scriptorium calms it by 30. Descending to the next act halves it.
 - Monsters drop their monster part and themed raws.
 
 ### 4.4 Lantern oil
@@ -152,7 +153,8 @@ Your lantern is your light radius, and it runs on oil.
 
 - Oil drains very slowly: 1 point every 5 steps, so a full lantern lasts about 500 steps (roughly 2–3 floors).
 - **Burn a card** (anytime while exploring): starter cards give 8 oil, paper 15, wood 30. Stone, silver and gold will not burn. You can't burn below 5 cards.
-- **Resurface** from the up-stairs where you arrived on each floor: a full refill, but the climb back down costs 30 Dread. You return to the same floor.
+- **Resurface** from the up-stairs where you entered a delve: a full refill, but the climb back down costs 30 Dread. You return to the same spot.
+- **Scriptoria** on the map can refill the lantern instead of resting, and **merchants** sell 40 oil for 15 gold.
 - This makes cheap cards double as fuel, and it gives every card a second use once it has served its purpose.
 
 ### 4.5 Events
@@ -170,7 +172,7 @@ Each floor has 1–2 events, marked on the map with a purple glow. Every event o
 | The Ink-Stained Altar | Offer a starter card: lose it, gain a relic. Offer blood: lose 10 HP, gain Ichor and a Pristine Essence. |
 
 ### 4.6 Merchant
-- Sells raws, refined ingredients and monster parts. Prices are set by rarity.
+- A node on the map. Sells raws, refined ingredients, monster parts and lantern oil. Prices are set by rarity.
 - **Repair** a worn card for gold.
 
 ### 4.7 Salvage and breakage
@@ -290,14 +292,14 @@ Passive trinkets. Each elite offers a choice of 3. Reliquary boxes have a 15% ch
 
 ## 7.6 Elites, Guardians and the Boss
 
-Each floor has an **elite** that wanders a side room and a **guardian** that stands on the stairs down. You can't descend until the guardian is beaten. Both drop a choice of 3 relics.
+Each act's **elite** guards the way out of its haunted delves. The **guardian** waits at the top of the act's map. Both drop a choice of 3 relics. In the Last Library, haunted delves can hold any of the three elites.
 
-| Floor | Elite | Guardian (phase 2 at half HP) |
+| Act | Elite | Guardian (phase 2 at half HP) |
 |---|---|---|
 | The Chapel Ruins | The Gravedigger (40) | The Bell Warden (54): *The bell cracks* |
 | The Drowned Archive | The Drowned Abbot (48) | The Pale Scrivener (62): *The Scrivener writes back* |
 | The Catacombs | The Choirmaster (54) | The Ossuary Saint (68): *The Saint rises* |
-| The Last Library | none | The Unbound Grimoire (110, boss): *The final page* |
+| The Last Library | any of the three | The Unbound Grimoire (110, boss): *The final page* |
 
 - **Phase 2:** when a guardian or the boss drops to half HP, a banner announces the change. It gains Strength and Block and switches to a harder move set, starting from that set's first move.
 - Phase changes can be triggered by direct damage, the Detonate reaction, or poison ticks.
@@ -306,10 +308,47 @@ Each floor has an **elite** that wanders a side room and a **guardian** that sta
 
 ## 8. Run Structure
 
-- 4 floors: The Chapel Ruins → The Drowned Archive → The Catacombs → The Last Library (boss). Enemy HP scales ×1, ×1.1, ×1.2, ×1.3 by floor.
-- Each floor: ~11 rooms, 12–14 scavenge spots, 2–3 reliquary boxes, a writing desk near the start, a merchant, an elite, and the stairs in the farthest room, held by the floor's guardian.
-- **You can craft only at writing desks.** Each desk allows one rest (heal 30% max HP).
-- Descending the stairs restores 20% max HP.
+- 4 acts: The Chapel Ruins → The Drowned Archive → The Catacombs → The Last Library (boss). Enemy HP scales ×1, ×1.1, ×1.2, ×1.3 by act.
+- Descending to the next act restores 20% max HP.
+- **You can craft only at writing desks**: every delve has one, and so does every scriptorium.
+
+### 8.0 The act map
+Each act is a branching map of 8 rows, drawn bottom to top. Four paths climb from the bottom row; each moves at most one column per row, paths never cross, and where they meet they share a node. Choices are only ever forward.
+
+| Row | What's there |
+|---|---|
+| 0 | Delves only (the run always opens in a dungeon) |
+| 1–5 | Weighted: Delve 40, Unknown 30, Haunted delve 12 (row 2+), Merchant 10, Scriptorium 8 |
+| 3 | One node is always a meeting with Sister Vell |
+| 6 | Scriptoria: every path passes one before the guardian |
+| 7 | The act's guardian (or the Grimoire) |
+
+- Merchants, scriptoria and haunted delves never follow one of their own kind. Every act has at least one haunted delve and one merchant.
+
+| Node | What happens |
+|---|---|
+| **Delve** | A small dungeon (7 rooms, 8 scavenge spots, 1 reliquary, a writing desk, a 35% chance of an event). Find the way out at the far end to return to the map. |
+| **Haunted delve** | Bigger (8 rooms, 11 spots, 2 reliquaries). The act's elite stands on the way out and drops a relic choice. |
+| **Unknown** | Usually an event (one you haven't seen this run). 15% an ambush, 12% a forgotten cache. |
+| **Merchant** | Shop with lantern oil and repairs. |
+| **Scriptorium** | Craft freely, then **either** rest (heal 30%, −30 Dread, −2 Corruption) **or** refill the lantern. |
+| **Sister Vell** | A story beat (see 8.2). |
+| **Guardian** | A boss fight with two phases. Beat it to descend. |
+
+- Delve desks are too exposed to rest at; resting happens at scriptoria.
+- Saves remember the map, where you are, and what each node turned out to be.
+
+### 8.2 The storyline: Sister Vell
+Sister Vell is the Inkbinder who went down a year before you. You can meet her once per act. Each choice moves her **trust**, which decides who she is in the Last Library.
+
+| Act | Beat | Choices |
+|---|---|---|
+| I | The Woman at the Font | Give her your ink (trust +1, a Moth Wing) · Ask what waits below (heal 10, −10 Dread) · Take her quill (trust −1, a relic) |
+| II | The Drowned Scriptorium | Hold the page still (−8 HP, Ghostlight, trust +1) · Take the page (learn a spell, +2 Corruption, trust −1) · Leave her |
+| III | Vell's Bargain | Let her bind a card (most fragile crafted card becomes Permanent and Pristine, trust −1) · Share your water (−6 HP, trust +1) · Cut the ink from her hands (2 Ichor, trust −2) |
+| IV | The Last Page | Trust 2+: she fights beside you (Grimoire −25% HP, 2 Weak) or you send her up (full oil and HP). Trust 1: her last page (learn a spell or heal, or burn it for oil). Trust 0 or less: **Vell, Hollowed**. Fight her for a relic, or slip past and the Grimoire gains 2 Strength. |
+
+Skipping her counts against her: nobody helped.
 
 ### 8.1 Writing desk actions
 | Tab | What you can do |
@@ -381,4 +420,5 @@ Decided: random encounters stay as they are (driven by Dread). Lantern oil is in
 7. ~~Ink reactions, relics, save and continue~~ (done)
 8. ~~Unlockable Inkbinders, rare inks, pristine finds, card wear, Corruption and forbidden recipes~~ (done)
 9. ~~More events, floor guardians with boss phases, new elites, polish (screen shake, particles, guided first run)~~ (done)
-10. Next: playtesting feedback.
+10. ~~Overworld act maps with branching paths, smaller delves, scriptoria, and the Sister Vell storyline~~ (done)
+11. Next: simplify crafting, playtesting feedback.

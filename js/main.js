@@ -1,17 +1,20 @@
 import {
   INK_COLORS, INK_MATERIALS, CARD_MATERIALS, ENCHANTMENTS, INGREDIENTS, RECIPES, ENEMIES, REPAIR_PRICE,
   REGIONS, REFINING, RAW_MATERIALS, LANTERN, EVENTS, RELICS, REACTIONS, VARIANTS, CORRUPTION, PRISTINE, HINTS,
+  STORY, NODE_TYPES, OIL_WARE, CAMP, MAP,
 } from './data.js';
 import { resolveEvent } from './events.js';
+import { availableNodes, guardianOf } from './overworld.js';
 import { loadMeta, saveMeta, learn, recordRun, forget, loadSoundPref, saveSoundPref, saveRunText, loadRunText, clearRun } from './meta.js';
 import { unlock, sfx, setEnabled, isEnabled, startAmbient, stopAmbient } from './audio.js';
 import { spriteURL, glyphURL } from './sprites.js';
 import { craftCard, validateBlueprint, describeCard, cardComponents, wearName } from './crafting.js';
 import { createCombat, playCard, endTurn, canPlay, effectiveCost, currentMove, previewReaction } from './combat.js';
 import {
-  createRun, currentRegion, descend, craftIntoDeck, salvageCard, rollRewards, applyRewards, rollShop,
-  refine, canRefine, reinscribe, mend, rest, scavenge, openChest, burnCard, burnValue, resurface,
+  createRun, currentRegion, descend, craftIntoDeck, salvageCard, rollRewards, applyRewards,
+  refine, canRefine, reinscribe, mend, scavenge, openChest, burnCard, burnValue, resurface,
   gainRelic, relicChoices, hasRelic, serializeRun, deserializeRun, isUnlocked, oilMax, corruptionState,
+  currentNode, enterNode, leaveDelve, campChoice, buyOil,
 } from './run.js';
 import { step, findPath, objectAt, BLOCKING } from './world.js';
 import { createExploreView, objectName } from './explore-view.js';
@@ -22,11 +25,11 @@ const bar = document.getElementById('bar');
 let run = null;
 let screen = 'title';
 let combat = null;
-let fightCtx = null; // { kind: 'random' | 'elite' | 'boss', obj }
+let fightCtx = null; // { kind: 'random' | 'elite' | 'guardian' | 'boss', obj }
 let target = 0;
 let rewards = null;
-let desk = null;      // the desk object being used
-let merchant = null;  // the merchant object being visited
+let desk = null;      // the desk being used: a delve's desk, or a scriptorium node on the map
+let merchant = null;  // the merchant node being visited
 let benchTab = 'inscribe';
 let blueprint = null;
 let notice = null;    // { text, tone }
@@ -37,7 +40,8 @@ let walkPath = null;
 let walkTimer = 0;
 let lastStepAt = 0;
 let standingOn = null;
-let eventCtx = null;  // { obj, id, result }
+let eventCtx = null;  // { obj, id, result }: obj is a delve object or a map node
+let mapNote = null;   // a line of news shown on the map
 let lastScreen = null;
 let forgetArmed = false;
 let abandonArmed = false;
@@ -161,9 +165,10 @@ function renderTitle() {
     <p>You are an <strong>Inkbinder</strong>. What you write on a card becomes true, for as long as the card holds together.
     Ink is mixed from ash, silver, gold and blood. Cards are cut from paper, wood, stone and precious metal.
     Every spell you cast wears its page down.</p>
-    <p>${['One', 'Two', 'Three', 'Four', 'Five'][REGIONS.length - 1]} floors down, beneath the chapel, the first book has woken. It wants a new hand to hold it.</p>
+    <p>${['One', 'Two', 'Three', 'Four', 'Five'][REGIONS.length - 1]} levels down, beneath the chapel, the first book has woken. It wants a new hand to hold it. Another Inkbinder went down a year ago. Nobody has heard from her since.</p>
     <ul class="howto">
-      <li><b>Explore</b> by tapping a tile, or with WASD or the arrow keys. Your lantern only reaches so far.</li>
+      <li><b>Choose your path</b> on each act's map: delves, strange events, merchants, scriptoria, and the guardian at the top.</li>
+      <li><b>Delve</b> into dungeons by tapping a tile, or with WASD or the arrow keys. Your lantern only reaches so far.</li>
       <li><b>Scavenge</b> raw materials. The longer you wander, the more Dread builds, and the more often things find you.</li>
       <li><b>Mind your lantern.</b> Oil burns down slowly. Feed it a card, or climb back to the surface to refill it.</li>
       <li><b>Refine and craft</b> at writing desks. Monster parts become enchantments.</li>
@@ -218,6 +223,71 @@ function renderCodex() {
       <button class="primary" data-act="restart">Back</button>
     </footer>
   </section>`;
+}
+
+// ---------- the overworld map ----------
+
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI'];
+// A small, stable offset per node so the map looks hand-drawn rather than gridded.
+const jitter = (seed, span) => ((((seed * 2654435761) >>> 0) % 1000) / 1000 - 0.5) * span;
+
+function nodePos(n) {
+  if (n.type === 'guardian') return [50, (0.5 / MAP.rows) * 100 + 1];
+  return [((n.col + 0.5) / MAP.cols) * 100 + jitter(n.id + 1, 8), (1 - (n.row + 0.5) / MAP.rows) * 100 + jitter(n.id + 11, 3)];
+}
+
+const nodeInfo = n => (n.type === 'guardian'
+  ? { name: ENEMIES[guardianOf(run.regionIdx)].name, desc: run.regionIdx === REGIONS.length - 1 ? 'The first book. Beat it to end the run.' : NODE_TYPES.guardian.desc, sprite: guardianOf(run.regionIdx) }
+  : NODE_TYPES[n.type]);
+
+function renderOverworld(scroll) {
+  const map = run.map;
+  const region = currentRegion(run);
+  const open = new Set(availableNodes(map).map(n => n.id));
+  const visited = new Set(map.visited);
+  const lines = map.nodes.flatMap(n => n.next.map(id => {
+    const m = map.nodes[id];
+    const [x1, y1] = nodePos(n), [x2, y2] = nodePos(m);
+    const cls = visited.has(n.id) && visited.has(m.id) ? 'walked' : n.id === map.pos && open.has(m.id) ? 'open' : '';
+    return `<line class="${cls}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+  })).join('');
+  const nodes = map.nodes.map(n => {
+    const [x, y] = nodePos(n);
+    const info = nodeInfo(n);
+    const state = n.id === map.pos ? 'here' : visited.has(n.id) ? 'visited' : open.has(n.id) ? 'open' : 'locked';
+    const go = state === 'open';
+    return `<button class="ownode t-${n.type} ${state}" style="left:${x}%;top:${y}%" ${go ? `data-act="goNode" data-id="${n.id}"` : 'aria-disabled="true" tabindex="-1"'}
+      title="${info.name}: ${info.desc}" aria-label="${info.name}${go ? '. Go here.' : ''}">${portrait(info.sprite)}</button>`;
+  }).join('');
+  const legend = ['delve', 'haunted', 'unknown', 'shop', 'camp', 'story']
+    .map(t => `<li>${portrait(NODE_TYPES[t].sprite)}<span><b>${NODE_TYPES[t].name}</b>${NODE_TYPES[t].desc}</span></li>`).join('');
+  const t = region.tiles;
+  app.innerHTML = `
+  <section class="overworld">
+    <div class="owmain">
+      <header class="screen-head">
+        <h2>Act ${ROMAN[run.regionIdx]}: ${region.name}</h2>
+        <p>${region.intro}</p>
+      </header>
+      ${mapNote ? `<p class="notice" role="status">${mapNote}</p>` : ''}
+      <div class="owmap" style="--t1:${t[1]};--t2:${t[3]};--t3:${t[5]}">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${lines}</svg>
+        ${nodes}
+      </div>
+    </div>
+    <aside class="side owside">
+      ${hintHtml('map')}
+      <h3 class="panel-title">Where to?</h3>
+      <p class="note">Pick a lit node. You can only follow the lines upward. The guardian waits at the top.</p>
+      <div class="meters">
+        <div class="meter oil${run.oil < 12 ? ' low' : ''}" title="Lantern oil ${run.oil} of ${oilMax(run)}"><span style="width:${(run.oil / oilMax(run)) * 100}%"></span><em>Lantern ${run.oil}</em></div>
+        <div class="meter dread" title="Dread ${run.dread}"><span style="width:${Math.min(100, run.dread / 2)}%"></span><em>Dread ${run.dread}</em></div>
+      </div>
+      <ul class="owlegend">${legend}</ul>
+    </aside>
+  </section>`;
+  const target = app.querySelector('.ownode.open');
+  if (scroll && target) target.scrollIntoView?.({ block: 'center', behavior: 'instant' });
 }
 
 // ---------- explore ----------
@@ -277,9 +347,8 @@ function renderSide() {
   const refined = Object.entries(run.inventory).filter(([id]) => /^(color|ink|mat)_/.test(id)).reduce((s, [, n]) => s + n, 0);
   let action = '';
   if (standingOn?.type === 'exit' && !standingOn.guard) {
-    const next = REGIONS[run.regionIdx + 1];
-    action = `<div class="prompt"><p>Stairs lead down into <b>${next.name}</b>. You cannot return to this floor.</p>
-      <button class="primary" data-act="descend">Descend</button></div>`;
+    action = `<div class="prompt"><p>The way out. Climb back up to the map. You cannot return to this delve.</p>
+      <button class="primary" data-act="leaveDelve">Climb out</button></div>`;
   } else if (standingOn?.type === 'up') {
     action = run.oil >= oilMax(run)
       ? '<div class="prompt"><p>Daylight, far above. Your lantern is full, so there is no reason to climb.</p></div>'
@@ -292,8 +361,8 @@ function renderSide() {
     : run.oil < 12 ? 'Your lantern is guttering.' : '';
   side.innerHTML = `
     ${exploreHint()}
-    <h2>${region.name}</h2>
-    <p class="intro">${region.intro}</p>
+    <h2>${currentNode(run)?.type === 'haunted' ? 'A haunted delve' : 'A delve'}</h2>
+    <p class="intro">${region.name}. Find the way out at the far end.</p>
     ${action}
     <div class="meters">
       <div class="meter oil${run.oil < 12 ? ' low' : ''}" title="Lantern oil ${run.oil} of ${oilMax(run)}. Light radius ${run.world.radius}."><span style="width:${oilPct}%"></span><em>Lantern ${run.oil}</em></div>
@@ -311,8 +380,8 @@ function renderSide() {
       <p class="note">${refined} refined ingredients ready to craft.</p>
     </div>
     <ul class="legend">
-      ${[['bone', 'Scavenge'], ['chest', 'Reliquary'], ['desk', 'Writing desk'], ['merchant', 'Merchant'],
-        ['stairsDown', 'Stairs down'], ['stairsUp', 'To the surface']].map(([s, l]) => `<li>${portrait(s)}${l}</li>`).join('')}
+      ${[['bone', 'Scavenge'], ['chest', 'Reliquary'], ['desk', 'Writing desk'],
+        ['stairsDown', 'The way out'], ['stairsUp', 'To the surface']].map(([s, l]) => `<li>${portrait(s)}${l}</li>`).join('')}
     </ul>`;
 }
 
@@ -380,21 +449,11 @@ function interact(obj) {
       run.salvagedHere = false;
       screen = 'bench';
       break;
-    case 'merchant':
-      merchant = obj; merchant.stock ||= rollShop(Math.random, run); notice = null;
-      screen = 'shop';
-      break;
-    case 'elite':
-      startFight([obj.enemy], { kind: 'elite', obj });
-      break;
-    case 'boss':
-      startFight([obj.enemy], { kind: 'boss', obj });
-      break;
     case 'exit':
       if (obj.guard) {
-        logExplore(`${ENEMIES[obj.guard].name} stands between you and the stair.`);
-        startFight([obj.guard], { kind: 'guardian', obj });
-      } else logExplore('A stair winds down into the dark.');
+        logExplore(`${ENEMIES[obj.guard].name} stands between you and the way out.`);
+        startFight([obj.guard], { kind: 'elite', obj });
+      } else logExplore('A stair climbs toward grey light. The way out.');
       break;
     case 'up':
       logExplore('Far above, a square of grey daylight.');
@@ -409,10 +468,23 @@ function interact(obj) {
 
 function startFight(enemies, ctx) {
   fightCtx = { ...ctx, enemies };
-  saveNow({ fight: { enemies, kind: ctx.kind, objId: ctx.obj?.id ?? null } });
+  saveNow({ fight: fightResume(fightCtx) });
   combat = createCombat(run, enemies, Math.random, { hpMult: currentRegion(run).hpMult });
+  if (ctx.kind === 'boss') storyAtBoss(combat);
   target = 0;
   screen = 'fight';
+}
+
+// What became of Sister Vell changes the last fight.
+function storyAtBoss(c) {
+  if (run.story?.ally) {
+    for (const e of c.enemies) { e.maxHp = Math.round(e.maxHp * 0.75); e.hp = Math.min(e.hp, e.maxHp); e.weak += 2; }
+    c.log.push('Sister Vell holds the Grimoire open. Its pages tear as it moves.');
+  }
+  if (run.story?.hollowAhead) {
+    for (const e of c.enemies) e.strength += 2;
+    c.log.push('What was Vell kneels beside the Grimoire, writing for it.');
+  }
 }
 
 // ---------- bench ----------
@@ -551,25 +623,42 @@ function deckTab() {
     </div>`;
 }
 
+function campButtons() {
+  if (desk.campUsed) return `<p class="note">${desk.campUsed === 'rest' ? 'You have rested.' : 'Your lantern is full.'}</p>`;
+  const heal = Math.min(run.maxHp - run.hp, Math.round(run.maxHp * CAMP.heal));
+  return `<div class="campacts">
+    <button data-act="campRest" title="Heal ${Math.round(CAMP.heal * 100)}% of your max HP, ease ${CAMP.dread} Dread and lift ${CAMP.corruption} Corruption">Rest (+${heal} HP)</button>
+    <button data-act="campOil" ${run.oil >= oilMax(run) ? 'disabled' : ''} title="Fill your lantern">Refill lantern (${run.oil}/${oilMax(run)})</button>
+  </div>`;
+}
+
 function renderBench() {
+  const isCamp = desk.type === 'camp';
   const tabs = [['inscribe', 'Inscribe'], ['refine', 'Refine'], ['deck', 'Deck']]
     .map(([id, label]) => `<button role="tab" aria-selected="${benchTab === id}" class="tab${benchTab === id ? ' on' : ''}" data-act="tab" data-tab="${id}">${label}</button>`).join('');
   const body = benchTab === 'refine' ? refineTab() : benchTab === 'deck' ? deckTab() : inscribeTab();
   app.innerHTML = `
   <section class="bench">
-    ${hintHtml('desk')}
+    ${hintHtml(isCamp ? 'camp' : 'desk')}
     <header class="screen-head bench-head">
       <div>
-        <h2>The Writing Desk</h2>
-        <p>A candle, a blotter, and a knife for cutting pages.</p>
+        <h2>${isCamp ? 'The Scriptorium' : 'The Writing Desk'}</h2>
+        <p>${isCamp ? 'Candles, a long table, and quiet. Craft what you like. Then rest, or refill your lantern: there is only time for one.' : 'A cold desk, a blotter, and a knife for cutting pages. Too exposed to rest here.'}</p>
       </div>
-      <button data-act="rest" ${desk.rested || run.hp >= run.maxHp ? 'disabled' : ''} title="Heal 30% of your max HP and calm your Dread. Once per desk.">${desk.rested ? 'Rested' : 'Rest by the candle'}</button>
+      ${isCamp ? campButtons() : ''}
     </header>
     <div class="tabs" role="tablist">${tabs}</div>
     ${notice ? `<p class="notice ${notice.tone || ''}" role="status">${notice.text}</p>` : ''}
     ${body}
-    <footer class="screen-foot"><button class="primary" data-act="toMap">Back to exploring</button></footer>
+    <footer class="screen-foot"><button class="primary" data-act="toMap">${backLabel()}</button></footer>
   </section>`;
+}
+
+function backLabel() {
+  if (run.world) return 'Back to exploring';
+  const n = currentNode(run);
+  if (n?.type === 'guardian' && n.cleared) return `Descend into ${REGIONS[run.regionIdx + 1].name}`;
+  return 'Back to the map';
 }
 
 // ---------- fight, rewards, shop, end ----------
@@ -602,7 +691,7 @@ function renderFight() {
 
   const mana = Array.from({ length: Math.max(run.energy, c.player.energy) }, (_, i) => `<i class="${i < c.player.energy ? 'on' : ''}"></i>`).join('');
   const recent = c.log.slice(-7).map(l => `<li>${l}</li>`).join('');
-  const title = { random: 'Something finds you in the dark', elite: 'Something guards this room', guardian: 'The guardian of the stair', boss: 'The Last Library' }[fightCtx.kind];
+  const title = { random: 'Something finds you in the dark', elite: 'Something stands in your way', guardian: `The guardian of ${currentRegion(run).name}`, boss: 'The Last Library' }[fightCtx.kind];
 
   app.innerHTML = `
   <section class="fight">
@@ -631,20 +720,22 @@ function renderRewards() {
   const salv = (r.salvaged || []).map(id => `<li class="loot">${itemName(id)} <small>(from a broken card)</small></li>`).join('');
   app.innerHTML = `
   <section class="rewards center">
-    <h2>The page falls silent</h2>
-    <p>You search what's left.</p>
+    <h2>${r.title || 'The page falls silent'}</h2>
+    <p>${r.lede || 'You search what\'s left.'}</p>
     <ul class="loots">${items}${salv}${r.gold ? `<li class="loot gold">${r.gold} gold</li>` : ''}${r.healed ? `<li class="loot heal">Chapel Candle: +${r.healed} HP</li>` : ''}</ul>
     ${!items && !salv && !r.gold ? '<p>Nothing worth keeping.</p>' : ''}
     ${r.relicChoices?.length && !r.relicTaken ? `
-      <h3 class="section-title">The guardian kept something. Choose one.</h3>
+      <h3 class="section-title">It kept something. Choose one.</h3>
       <div class="relicpick">${r.relicChoices.map(id => relicCard(id, `data-act="takeRelic" data-id="${id}"`)).join('')}</div>
       <button data-act="toMap">Leave them all</button>`
-      : `${r.relicTaken ? `<p class="notice rare">You take the ${RELICS[r.relicTaken].name}.</p>` : ''}<button class="primary" data-act="toMap">Back to exploring</button>`}
+      : `${r.relicTaken ? `<p class="notice rare">You take the ${RELICS[r.relicTaken].name}.</p>` : ''}${r.relicFound ? `<div class="relicpick">${relicCard(r.relicFound)}</div>` : ''}<button class="primary" data-act="toMap">${backLabel()}</button>`}
   </section>`;
 }
 
 function renderShop() {
-  const stock = merchant.stock.map((s, i) => s.relic
+  const oilWare = `<button class="ware oilware" data-act="buyOil" ${run.gold < OIL_WARE.price || run.oil >= oilMax(run) ? 'disabled' : ''} title="+${OIL_WARE.oil} lantern oil">
+      ${portrait('lanterns', 'wareart')}<span>Lantern oil</span><small>+${OIL_WARE.oil} (you have ${run.oil}/${oilMax(run)})</small><b>${OIL_WARE.price} gold</b></button>`;
+  const stock = oilWare + merchant.stock.map((s, i) => s.relic
     ? `<button class="ware relicware" data-act="buy" data-idx="${i}" ${s.sold || run.gold < s.price || hasRelic(run, s.relic) ? 'disabled' : ''} title="${RELICS[s.relic].desc}">
       ${portrait(`relic_${s.relic}`, 'wareart')}<span>${RELICS[s.relic].name}</span><small>relic</small><b>${s.sold ? 'Sold' : s.price + ' gold'}</b></button>`
     : `<button class="ware r-${INGREDIENTS[s.id].rarity}" data-act="buy" data-idx="${i}" ${s.sold || run.gold < s.price ? 'disabled' : ''}>
@@ -665,7 +756,7 @@ function renderShop() {
     <div class="panel"><h3 class="panel-title">Repairs</h3>
       ${repairs ? `<div class="cards">${repairs}</div>` : '<p class="none">None of your cards are worn.</p>'}
     </div>
-    <footer class="screen-foot"><button class="primary" data-act="toMap">Back to exploring</button></footer>
+    <footer class="screen-foot"><button class="primary" data-act="toMap">${backLabel()}</button></footer>
   </section>`;
 }
 
@@ -691,7 +782,7 @@ function renderBurn() {
 }
 
 function renderEvent() {
-  const ev = EVENTS[eventCtx.id];
+  const ev = EVENTS[eventCtx.id] || STORY[eventCtx.id];
   const r = eventCtx.result;
   const body = r
     ? `<p class="result">${r.text}</p>
@@ -702,7 +793,8 @@ function renderEvent() {
     : `<ul class="choices">${ev.options.map(o => `<li><button data-act="choose" data-opt="${o.id}"><b>${o.label}</b>${o.desc ? `<span>${o.desc}</span>` : ''}</button></li>`).join('')}</ul>`;
   app.innerHTML = `
   <section class="event center">
-    ${portrait(eventCtx.id, 'eventart')}
+    ${portrait(ev.art || eventCtx.id, 'eventart')}
+    ${STORY[eventCtx.id] ? '<p class="storytag">Sister Vell</p>' : ''}
     <h2>${ev.name}</h2>
     <p class="lede">${ev.text}</p>
     ${body}
@@ -728,6 +820,7 @@ function render() {
   lastScreen = screen;
   switch (screen) {
     case 'title': renderTitle(); break;
+    case 'map': renderOverworld(changed); break;
     case 'explore':
       if (!view || view.world !== run.world || !document.getElementById('map')) mountExplore();
       renderSide();
@@ -749,13 +842,13 @@ function render() {
 // ---------- saving ----------
 
 let saveTimer = 0;
+// Fights restart from the beginning on load. Remember who, and what they were guarding.
+const fightResume = ctx => ({ enemies: ctx.enemies, kind: ctx.kind, objId: ctx.obj?.id ?? null, onMap: !run.world });
 function saveNow(extra = {}) {
   if (!run || ['won', 'lost', 'title', 'codex'].includes(screen) && !extra.fight) return;
   const resume = { log: exploreLog.slice(-5), ...extra };
-  if (screen === 'fight' && !extra.fight && fightCtx) {
-    resume.fight = { enemies: fightCtx.enemies, kind: fightCtx.kind, objId: fightCtx.obj?.id ?? null };
-  }
-  if (screen === 'event' && eventCtx && !eventCtx.result) resume.eventObjId = eventCtx.obj.id;
+  if (screen === 'fight' && !extra.fight && fightCtx) resume.fight = fightResume(fightCtx);
+  if (screen === 'event' && eventCtx && !eventCtx.result && run.world) resume.eventObjId = eventCtx.obj.id;
   if (screen === 'rewards' && rewards?.relicChoices?.length && !rewards.relicTaken) resume.relicChoices = rewards.relicChoices;
   try { saveRunText(serializeRun(run, resume)); } catch { /* ignore */ }
 }
@@ -775,15 +868,70 @@ function afterCombatAction() {
   if (combat.over === 'lost') { endRun(false); return; }
   if (fightCtx.kind === 'boss') { endRun(true); return; }
   const big = fightCtx.kind === 'elite' || fightCtx.kind === 'guardian';
-  if (fightCtx.kind === 'guardian') fightCtx.obj.guard = null; // the stairs stay, now open
-  else if (fightCtx.obj) fightCtx.obj.gone = true;
+  const obj = fightCtx.obj;
+  if (obj?.type === 'exit') obj.guard = null;   // the way out stays, now open
+  else if (obj && 'row' in obj) obj.cleared = true; // a node on the map
+  else if (obj) obj.gone = true;
   rewards = rollRewards(fightCtx.enemies, { elite: big, dice: hasRelic(run, 'dice') });
   if (big) rewards.relicChoices = relicChoices(run, 3);
   rewards.salvaged = combat.salvaged;
   applyRewards(run, rewards);
-  logExplore(fightCtx.kind === 'guardian' ? `The ${ENEMIES[fightCtx.enemies[0]].name} falls. The stair is open.`
-    : fightCtx.kind === 'elite' ? `The ${ENEMIES[fightCtx.enemies[0]].name} falls.` : 'You survive the encounter.');
+  const name = ENEMIES[fightCtx.enemies[0]].name;
+  logExplore(fightCtx.kind === 'guardian' ? `${name} falls. The way down is open.`
+    : obj?.type === 'exit' ? `${name} falls. The way out is open.`
+    : fightCtx.kind === 'elite' ? `${name} falls.` : 'You survive the encounter.');
+  if (fightCtx.kind === 'guardian') mapNote = `${name} falls. The way down to ${REGIONS[run.regionIdx + 1].name} is open.`;
   screen = 'rewards';
+}
+
+// Route into whatever a map node turned out to be.
+function openNode(node) {
+  const o = node.outcome;
+  notice = null;
+  switch (o.type) {
+    case 'delve':
+      sfx('descend');
+      exploreLog = [o.elite ? `You go down. Somewhere ahead, ${ENEMIES[o.elite].name} waits by the way out.` : 'You go down into the dark. Find the way out at the far end.'];
+      standingOn = objectAt(run.world, run.world.px, run.world.py);
+      screen = 'explore';
+      break;
+    case 'shop':
+      merchant = node; screen = 'shop';
+      break;
+    case 'camp':
+      desk = node; blueprint = emptyBlueprint(); benchTab = 'inscribe'; salvageMode = false;
+      run.salvagedHere = false;
+      screen = 'bench';
+      break;
+    case 'event':
+    case 'story':
+      eventCtx = { obj: node, id: o.event, result: null };
+      sfx('event');
+      screen = 'event';
+      break;
+    case 'fight':
+      if (o.kind !== 'random') sfx('encounter');
+      startFight(o.enemies, { kind: o.kind, obj: node });
+      break;
+    case 'cache':
+      node.finished = true;
+      sfx(o.relic ? 'relic' : 'chest');
+      rewards = { title: 'A forgotten cache', lede: 'Someone hid this here and never came back for it.', items: o.items, gold: o.gold, relicFound: o.relic };
+      screen = 'rewards';
+      break;
+    default:
+      screen = 'map';
+  }
+}
+
+function nextAct() {
+  const r = descend(run);
+  sfx('descend');
+  startAmbient(run.regionIdx);
+  standingOn = null;
+  exploreLog = [];
+  mapNote = `You go down the long stair into ${currentRegion(run).name} and recover ${r.heal} HP on the way.`;
+  screen = 'map';
 }
 
 function endRun(won) {
@@ -810,9 +958,10 @@ const actions = {
     run.startKnown = meta.grimoire.length;
     startAmbient(0);
     sfx('descend');
-    exploreLog = ['You light your lantern at the top of the stair. Tap a tile to walk there, or use WASD or the arrow keys.'];
-    standingOn = objectAt(run.world, run.world.px, run.world.py);
-    screen = 'explore';
+    exploreLog = [];
+    mapNote = 'You light your lantern at the chapel gate. Below you, the ruins branch in every direction.';
+    standingOn = null;
+    screen = 'map';
   },
   restart() { run = null; forgetArmed = false; abandonArmed = false; stopAmbient(); screen = 'title'; },
   continue() {
@@ -823,20 +972,60 @@ const actions = {
     run.startKnown ??= meta.grimoire.length;
     for (const id of meta.grimoire) run.grimoire.add(id);
     exploreLog = res.log || ['You pick up where you left off.'];
-    standingOn = objectAt(run.world, run.world.px, run.world.py);
+    standingOn = run.world ? objectAt(run.world, run.world.px, run.world.py) : null;
     startAmbient(run.regionIdx);
-    screen = 'explore';
+    mapNote = null;
+    screen = run.world ? 'explore' : 'map';
+    const node = currentNode(run);
     if (res.fight) {
-      const obj = run.world.objects.find(o => o.id === res.fight.objId) || null;
+      const obj = res.fight.onMap ? (res.fight.objId != null ? node : null)
+        : run.world?.objects.find(o => o.id === res.fight.objId) || null;
       startFight(res.fight.enemies, { kind: res.fight.kind, obj });
       logExplore('The fight you fled from starts over.');
-    } else if (res.eventObjId != null) {
-      const obj = run.world.objects.find(o => o.id === res.eventObjId);
-      if (obj && !obj.gone) { eventCtx = { obj, id: obj.event, result: null }; screen = 'event'; }
     } else if (res.relicChoices?.length) {
       rewards = { items: [], gold: 0, relicChoices: res.relicChoices };
       screen = 'rewards';
+    } else if (!run.world && node?.type === 'guardian' && node.cleared) {
+      nextAct();
+    } else if (!run.world && node && !node.finished && node.outcome) {
+      openNode(node);
+    } else if (res.eventObjId != null) {
+      const obj = run.world.objects.find(o => o.id === res.eventObjId);
+      if (obj && !obj.gone) { eventCtx = { obj, id: obj.event, result: null }; screen = 'event'; }
     }
+  },
+  goNode({ id }) {
+    const r = enterNode(run, +id);
+    if (r.error) return;
+    mapNote = null;
+    openNode(currentNode(run));
+  },
+  leaveDelve() {
+    const r = leaveDelve(run);
+    walkPath = null;
+    standingOn = null;
+    const node = currentNode(run);
+    if (node) node.finished = true;
+    sfx('descend');
+    mapNote = `You climb out into the grey light. The open air steadies you${r.eased ? ` (-${r.eased} Dread)` : ''}.`;
+    screen = 'map';
+  },
+  campRest() {
+    const r = campChoice(run, desk, 'rest');
+    if (r.error) { notice = { text: r.error, tone: 'warn' }; return; }
+    sfx('heal');
+    notice = { text: `You sleep under the candles and recover ${r.heal} HP. The dread eases${r.cleansed ? `, and ${r.cleansed} Corruption lifts` : ''}.` };
+  },
+  campOil() {
+    const r = campChoice(run, desk, 'oil');
+    if (r.error) { notice = { text: r.error, tone: 'warn' }; return; }
+    sfx('burn');
+    notice = { text: `You fill your lantern from the scriptorium lamps (+${r.oil} oil).` };
+  },
+  buyOil() {
+    const r = buyOil(run);
+    notice = r.error ? { text: r.error, tone: 'warn' } : { text: `The merchant tops up your lantern (+${r.oil} oil).` };
+    if (!r.error) sfx('pickup');
   },
   takeRelic({ id }) {
     if (!rewards?.relicChoices?.includes(id) || rewards.relicTaken) return;
@@ -864,14 +1053,26 @@ const actions = {
     const r = resolveEvent(run, eventCtx.id, opt);
     eventCtx.result = r;
     eventCtx.obj.gone = true;
+    if (!run.world) eventCtx.obj.finished = true;
     standingOn = null;
     if (r.relic) { gainRelic(run, r.relic); sfx('relic'); }
     else if (r.learned) { learn(meta, r.learned); sfx('discover'); }
     else if (r.items?.length) sfx('pickup');
-    logExplore(`${EVENTS[eventCtx.id].name}: ${r.text}`);
+    logExplore(`${(EVENTS[eventCtx.id] || STORY[eventCtx.id]).name}: ${r.text}`);
   },
-  eventFight() { sfx('encounter'); startFight(eventCtx.result.fight, { kind: 'random' }); },
-  toMap() { notice = null; screen = 'explore'; },
+  eventFight() {
+    sfx('encounter');
+    const r = eventCtx.result;
+    startFight(r.fight, { kind: r.elite ? 'elite' : 'random', obj: run.world ? null : eventCtx.obj });
+  },
+  toMap() {
+    notice = null;
+    if (run.world) { screen = 'explore'; return; }
+    const node = currentNode(run);
+    if (node) node.finished = true;
+    if (node?.type === 'guardian' && node.cleared) { nextAct(); return; }
+    screen = 'map';
+  },
   openBurn() { walkPath = null; notice = null; screen = 'burn'; },
   burn({ uid }) {
     const r = burnCard(run, uid);
@@ -887,20 +1088,9 @@ const actions = {
     sfx('descend');
     logExplore(`You climb to the surface and refill your lantern. The climb back down frays your nerves (+${r.dread} Dread).`);
   },
-  descend() {
-    const r = descend(run);
-    sfx('descend');
-    startAmbient(run.regionIdx);
-    standingOn = objectAt(run.world, run.world.px, run.world.py);
-    exploreLog = [`You catch your breath on the long stair and recover ${r.heal} HP.`];
-    screen = 'explore';
-  },
+
   tab({ tab }) { benchTab = tab; notice = null; salvageMode = false; },
-  rest() {
-    const r = rest(run, desk);
-    notice = r.error ? { text: r.error, tone: 'warn' } : { text: `You rest by the candle and recover ${r.heal} HP. The dread eases.` };
-    if (!r.error) sfx('heal');
-  },
+
   refine({ id }) {
     const r = refine(run, id);
     if (!r.error) sfx(id === 'bleed' ? 'hurt' : 'pickup');
@@ -1147,6 +1337,6 @@ document.addEventListener('keydown', e => {
 });
 
 // exposed for debugging in the console
-window.spellcrafter = { get run() { return run; }, get combat() { return combat; }, get screen() { return screen; }, walkTo, BLOCKING };
+window.spellcrafter = { get run() { return run; }, get combat() { return combat; }, get screen() { return screen; }, walkTo, BLOCKING, availableNodes };
 
 render();
