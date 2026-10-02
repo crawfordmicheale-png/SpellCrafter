@@ -11,13 +11,14 @@ export function shuffle(arr, rng = Math.random) {
 
 // A fight. Mutates `run` (hp, maxHp, gold, deck, inventory) as things happen.
 // paperWear: extra uses a paper card loses per cast (a flooded delve).
-export function createCombat(run, enemyKeys, rng = Math.random, { hpMult = 1, paperWear = 0 } = {}) {
+// strength: extra Strength every enemy starts with (from the Depth).
+export function createCombat(run, enemyKeys, rng = Math.random, { hpMult = 1, paperWear = 0, strength = 0 } = {}) {
   const c = {
     run, rng,
     enemies: enemyKeys.map(key => {
       const e = ENEMIES[key];
       const hp = Math.round(e.hp * hpMult);
-      return { key, name: e.name, hp, maxHp: hp, block: 0, poison: 0, weak: 0, strength: 0, moveIdx: 0 };
+      return { key, name: e.name, hp, maxHp: hp, block: 0, poison: 0, weak: 0, strength, moveIdx: 0 };
     }),
     hunger: {}, // card uid -> times cast this fight (Hungering)
     player: { block: 0, energy: 0, weak: 0, poison: 0, nextFree: false },
@@ -156,6 +157,7 @@ export function effectiveCost(c, card) {
 // Returns null if the card can be played, or a reason it can't.
 export function canPlay(c, card) {
   if (c.over) return 'The fight is over.';
+  if (card.unplayable) return `${card.name} cannot be cast.`;
   if (effectiveCost(c, card) > c.player.energy) return 'Not enough mana.';
   const blood = bloodCost(c, card);
   if (blood && c.run.hp <= blood) return 'Not enough blood left to pay.';

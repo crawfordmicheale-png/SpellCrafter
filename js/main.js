@@ -1,7 +1,7 @@
 import {
   INK_COLORS, INK_MATERIALS, CARD_MATERIALS, ENCHANTMENTS, INGREDIENTS, RECIPES, ENEMIES, REPAIR_PRICE,
   REGIONS, RAW_MATERIALS, LANTERN, EVENTS, RELICS, REACTIONS, VARIANTS, CORRUPTION, PRISTINE, HINTS,
-  STORY, NODE_TYPES, OIL_WARE, CAMP, MAP, DELVE_CONDITIONS, ALT_SOURCES, SECOND_INK_COST, SIGNATURES, NAME_MAX,
+  STORY, NODE_TYPES, OIL_WARE, CAMP, MAP, DELVE_CONDITIONS, DEPTHS, ALT_SOURCES, SECOND_INK_COST, SIGNATURES, NAME_MAX,
 } from './data.js';
 import { resolveEvent } from './events.js';
 import { availableNodes, guardianOf } from './overworld.js';
@@ -17,7 +17,7 @@ import {
   createRun, currentRegion, descend, craftIntoDeck, salvageCard, rollRewards, applyRewards,
   reinscribe, mend, scavenge, openChest, burnCard, burnValue, resurface,
   gainRelic, relicChoices, hasRelic, serializeRun, deserializeRun, isUnlocked, oilMax, corruptionState,
-  currentNode, enterNode, leaveDelve, campChoice, buyOil,
+  currentNode, enterNode, leaveDelve, campChoice, buyOil, fightOptions, priceFor,
 } from './run.js';
 import { step, findPath, objectAt, BLOCKING } from './world.js';
 import { createExploreView, objectName } from './explore-view.js';
@@ -51,6 +51,8 @@ let forgetArmed = false;
 let abandonArmed = false;
 let meta = loadMeta();
 let selectedVariant = VARIANTS[meta.lastVariant] && isUnlocked(meta, meta.lastVariant) ? meta.lastVariant : 'inkbinder';
+let selectedDepth = Math.min(meta.lastDepth || 0, meta.depthUnlocked || 0);
+let endNews = null;   // what this run unlocked, for the end screen
 setEnabled(loadSoundPref());
 
 const STEP_MS = 85;
@@ -157,6 +159,7 @@ function renderBar() {
       <span class="stat gold" title="Gold">Gold <b>${run.gold}</b></span>
       <button class="stat deck deckbtn" data-act="openDeck" title="See your deck (V)" aria-haspopup="dialog">Deck <b>${run.deck.length}</b></button>
       <span class="stat dread" title="Dread rises as you wander. Monsters find you more often.">Dread <b>${run.dread}</b></span>
+      ${run.depth ? `<span class="stat depth" title="${DEPTHS.slice(0, run.depth).map((d, i) => `${i + 1}. ${d.name}`).join('&#10;')}">Depth <b>${run.depth}</b></span>` : ''}
       ${run.corruption ? `<span class="stat corruption" title="Corruption ${run.corruption}. Tainted at ${CORRUPTION.tainted}: Black and Blood cards +${CORRUPTION.taintBonus}, but you start fights Weak. Forsaken at ${CORRUPTION.forsaken}: forbidden recipes open, but enemies gain Strength.">Corruption <b>${run.corruption}${corruptionState(run) ? ` · ${corruptionState(run)}` : ''}</b></span>` : ''}
     </span>
     ${run.relics.length ? `<span class="relics">${run.relics.map(relicIcon).join('')}</span>` : ''}
@@ -188,6 +191,7 @@ function renderTitle() {
       return `<button class="variant${id === selectedVariant ? ' sel' : ''}${open ? '' : ' locked'}" data-act="pickVariant" data-id="${id}" ${open ? '' : 'disabled'} aria-pressed="${id === selectedVariant}">
         ${portrait('player', 'varart', v.swap)}<b>${v.name}</b><span>${open ? v.desc : `Locked. ${v.unlock.text}.`}</span></button>`;
     }).join('')}</div>
+    ${depthPicker()}
     <div class="title-actions">
       ${savedSummary() ? `<button class="primary" data-act="continue">Continue: ${savedSummary()}</button>
         <button data-act="begin">${abandonArmed ? 'Tap again to abandon it and start over' : 'New run'}</button>`
@@ -198,12 +202,22 @@ function renderTitle() {
   </section>`;
 }
 
+function depthPicker() {
+  const open = meta.depthUnlocked || 0;
+  if (!open) return `<p class="note depthteaser">Win a run to open the Depths: harder runs, one rule at a time.</p>`;
+  const levels = Array.from({ length: open + 1 }, (_, n) => `<button class="depthpick${n === selectedDepth ? ' sel' : ''}" data-act="pickDepth" data-n="${n}" aria-pressed="${n === selectedDepth}" title="${n ? DEPTHS[n - 1].name : 'The run as written'}">${n}</button>`).join('');
+  const rules = DEPTHS.slice(0, selectedDepth).map((d, i) => `<li><b>${i + 1}. ${d.name}.</b> ${d.desc}</li>`).join('');
+  return `<h3 class="section-title">Depth</h3>
+    <div class="depths" role="group" aria-label="Depth">${levels}</div>
+    ${selectedDepth ? `<ul class="depthrules">${rules}</ul>` : '<p class="note">Depth 0: the run as written.</p>'}`;
+}
+
 function savedSummary() {
   const text = loadRunText();
   if (!text) return null;
   try {
     const { run: r } = JSON.parse(text);
-    return `${REGIONS[r.regionIdx].name}, ${r.hp}/${r.maxHp} HP`;
+    return `${REGIONS[r.regionIdx].name}${r.depth ? `, Depth ${r.depth}` : ""}, ${r.hp}/${r.maxHp} HP`;
   } catch { return null; }
 }
 
@@ -247,7 +261,8 @@ function nodePos(n) {
 
 const nodeInfo = n => {
   if (n.type === 'guardian') {
-    return { name: ENEMIES[guardianOf(run.regionIdx)].name, desc: run.regionIdx === REGIONS.length - 1 ? 'The first book. Beat it to end the run.' : NODE_TYPES.guardian.desc, sprite: guardianOf(run.regionIdx) };
+    const g = guardianOf(run.map);
+    return { name: ENEMIES[g].name, desc: run.regionIdx === REGIONS.length - 1 ? 'The first book. Beat it to end the run.' : `${ENEMIES[g].desc} ${NODE_TYPES.guardian.desc}`, sprite: g };
   }
   const cond = DELVE_CONDITIONS[n.cond];
   const t = NODE_TYPES[n.type];
@@ -291,6 +306,7 @@ function renderOverworld(scroll) {
     </div>
     <aside class="side owside">
       ${hintHtml('map')}
+      <p class="guardline">${portrait(guardianOf(run.map), 'guardart')}<span>Waiting at the top: <b>${ENEMIES[guardianOf(run.map)].name}</b></span></p>
       <h3 class="panel-title">Where to?</h3>
       <p class="note">Pick a lit node. You can only follow the lines upward. The guardian waits at the top.</p>
       <div class="meters">
@@ -488,7 +504,7 @@ function startFight(enemies, ctx) {
   fightCtx = { ...ctx, enemies };
   saveNow({ fight: fightResume(fightCtx) });
   combat = createCombat(run, enemies, Math.random, {
-    hpMult: currentRegion(run).hpMult,
+    ...fightOptions(run, ctx.kind),
     paperWear: DELVE_CONDITIONS[run.world?.cond]?.paperWear || 0,
   });
   if (combat.paperWear) combat.log.push('The water seeps into everything. Paper cards wear twice as fast here.');
@@ -798,8 +814,9 @@ function renderRewards() {
 }
 
 function renderShop() {
-  const oilWare = `<button class="ware oilware" data-act="buyOil" ${run.gold < OIL_WARE.price || run.oil >= oilMax(run) ? 'disabled' : ''} title="+${OIL_WARE.oil} lantern oil">
-      ${portrait('lanterns', 'wareart')}<span>Lantern oil</span><small>+${OIL_WARE.oil} (you have ${run.oil}/${oilMax(run)})</small><b>${OIL_WARE.price} gold</b></button>`;
+  const oilPrice = priceFor(run, OIL_WARE.price);
+  const oilWare = `<button class="ware oilware" data-act="buyOil" ${run.gold < oilPrice || run.oil >= oilMax(run) ? 'disabled' : ''} title="+${OIL_WARE.oil} lantern oil">
+      ${portrait('lanterns', 'wareart')}<span>Lantern oil</span><small>+${OIL_WARE.oil} (you have ${run.oil}/${oilMax(run)})</small><b>${oilPrice} gold</b></button>`;
   const stock = oilWare + merchant.stock.map((s, i) => s.relic
     ? `<button class="ware relicware" data-act="buy" data-idx="${i}" ${s.sold || run.gold < s.price || hasRelic(run, s.relic) ? 'disabled' : ''} title="${RELICS[s.relic].desc}">
       ${portrait(`relic_${s.relic}`, 'wareart')}<span>${RELICS[s.relic].name}</span><small>relic</small><b>${s.sold ? 'Sold' : s.price + ' gold'}</b></button>`
@@ -807,8 +824,8 @@ function renderShop() {
       <span>${itemName(s.id)}</span><small>${INGREDIENTS[s.id].kind === 'raw' ? 'raw material' : INGREDIENTS[s.id].kind === 'enchant' ? ENCHANTMENTS[INGREDIENTS[s.id].key].name : INGREDIENTS[s.id].rarity}</small><b>${s.sold ? 'Sold' : s.price + ' gold'}</b></button>`).join('');
   const worn = run.deck.filter(k => Number.isFinite(k.durability) && k.durability < k.maxDurability);
   const repairs = worn.map(k => cardHtml(k, {
-    action: `data-act="repair" data-uid="${k.uid}"`, disabled: run.gold < REPAIR_PRICE,
-    extra: `<span class="salv">Repair: ${REPAIR_PRICE} gold</span>`,
+    action: `data-act="repair" data-uid="${k.uid}"`, disabled: run.gold < priceFor(run, REPAIR_PRICE),
+    extra: `<span class="salv">Repair: ${priceFor(run, REPAIR_PRICE)} gold</span>`,
   })).join('');
   app.innerHTML = `
   <section class="shop">
@@ -873,7 +890,8 @@ function renderEnd(won) {
     <p>${won
       ? 'The first book falls still in your hands. Its pages are blank now, waiting. You could write anything.'
       : `You fell in ${currentRegion(run).name}. Another Inkbinder will find your cards in the dust.`}</p>
-    <p class="note">Cards in deck: ${run.deck.length} · New spells this run: ${meta.grimoire.length - run.startKnown} · Grimoire: ${meta.grimoire.length} of ${RECIPES.length}</p>
+    <p class="note">${run.depth ? `Depth ${run.depth} · ` : ''}Cards in deck: ${run.deck.length} · New spells this run: ${meta.grimoire.length - run.startKnown} · Grimoire: ${meta.grimoire.length} of ${RECIPES.length}</p>
+    ${endNews ? `<p class="notice rare">${endNews}</p>` : ''}
     <button class="primary" data-act="restart">Begin a new run</button>
   </section>`;
 }
@@ -1005,7 +1023,9 @@ function nextAct() {
 
 function endRun(won) {
   clearRun();
-  recordRun(meta, { won, depth: run.regionIdx });
+  const r = recordRun(meta, { won, depth: run.regionIdx, level: run.depth || 0, maxLevel: DEPTHS.length });
+  endNews = r.unlocked ? `Depth ${r.unlocked} is open: ${DEPTHS[r.unlocked - 1].name}. ${DEPTHS[r.unlocked - 1].desc}` : null;
+  if (r.unlocked) selectedDepth = r.unlocked;
   stopAmbient();
   sfx(won ? 'win' : 'lose');
   screen = won ? 'won' : 'lost';
@@ -1021,8 +1041,9 @@ const actions = {
     if (loadRunText() && !abandonArmed) { abandonArmed = true; return; }
     abandonArmed = false;
     clearRun();
-    run = createRun(undefined, meta.grimoire, selectedVariant);
+    run = createRun(undefined, meta.grimoire, selectedVariant, selectedDepth);
     meta.lastVariant = selectedVariant;
+    meta.lastDepth = selectedDepth;
     saveMeta(meta);
     run.startKnown = meta.grimoire.length;
     startAmbient(0);
@@ -1109,6 +1130,7 @@ const actions = {
   hintOk({ id }) { meta.hints ||= { seen: [], off: false }; meta.hints.seen.push(id); saveMeta(meta); },
   hintsOff() { meta.hints ||= { seen: [], off: false }; meta.hints.off = true; saveMeta(meta); },
   pickVariant({ id }) { if (isUnlocked(meta, id)) { selectedVariant = id; sfx('click'); } },
+  pickDepth({ n }) { if (+n <= (meta.depthUnlocked || 0)) { selectedDepth = +n; sfx('click'); } },
   forget() {
     if (!forgetArmed) { forgetArmed = true; return; }
     meta = forget();
@@ -1248,8 +1270,8 @@ const actions = {
   },
   repair({ uid }) {
     const k = run.deck.find(c => c.uid === uid);
-    if (!k || run.gold < REPAIR_PRICE) return;
-    run.gold -= REPAIR_PRICE;
+    if (!k || run.gold < priceFor(run, REPAIR_PRICE)) return;
+    run.gold -= priceFor(run, REPAIR_PRICE);
     k.durability = k.maxDurability;
     notice = { text: `${k.name} is restored.` };
   },

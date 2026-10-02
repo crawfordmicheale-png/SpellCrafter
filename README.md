@@ -24,7 +24,8 @@ Opening `index.html` straight from disk won't work, because browsers block JavaS
 - **Deck viewer:** tap Deck in the top bar, or press V, from anywhere in a run.
 - **Scriptoria:** craft, then choose to rest or refill your lantern.
 - **A storyline:** Sister Vell, the Inkbinder who went down before you. How you treat her decides whether she stands with you against the Grimoire, or against you.
-- **Act guardians:** the Bell Warden, the Pale Scrivener, the Ossuary Saint, and finally the Unbound Grimoire wait at the top of each map. At half health each one enters a second phase.
+- **Act guardians:** one of two per act (the Bell Warden or the Hollow Bishop, the Pale Scrivener or the Leviathan Index, the Ossuary Saint or the Bone Cantor), and finally the Unbound Grimoire. At half health each one enters a second phase.
+- **Depths:** eight harder levels, unlocked one at a time by winning. Each adds a rule on top of the last.
 - **Dread:** the longer you wander, the more often monsters find you.
 - **Lantern oil:** your light shrinks as oil runs low. Burn a card for oil, or climb back to the surface to refill.
 - **Hand-drawn pixel art** for the Inkbinder, dungeon tiles, scavenge spots, enemies, and the ink glyphs on cards.

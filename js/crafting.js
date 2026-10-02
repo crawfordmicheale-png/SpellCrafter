@@ -254,7 +254,7 @@ export function makeStarterCard(key) {
   return {
     uid: uid(), name: s.name, crafted: false, starter: key,
     colors: s.colors, inkMat: null, cardMat: null, enchants: [],
-    cost: s.cost, hpCost: 0, purify: false, goldOnCast: 0,
+    cost: s.cost, hpCost: 0, purify: false, goldOnCast: 0, unplayable: !!s.unplayable,
     effects: s.effects.map(e => ({ ...e })),
     durability: Infinity, maxDurability: Infinity,
   };
@@ -284,6 +284,7 @@ const EFFECT_TEXT = {
 
 export function describeCard(card) {
   const lines = card.effects.map(e => EFFECT_TEXT[e.type](e.amount));
+  if (card.unplayable) lines.push('Cannot be cast. Burn it or salvage it.');
   if (card.hpCost) lines.push(`Costs ${card.hpCost} HP.`);
   if (card.purify) lines.push('Purify 1 debuff.');
   if (card.goldOnCast) lines.push(`Gain ${card.goldOnCast} gold.`);

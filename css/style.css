@@ -600,3 +600,15 @@ button.linkish { background: none; border: none; color: var(--muted); text-decor
   .cond { width: 16px; height: 16px; font-size: 10px; }
 }
 .ownode .cond { width: 20px; height: 20px; font-size: 12px; }
+
+/* ---------- depths and guardians ---------- */
+.depths { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.depthpick { width: 40px; height: 40px; padding: 0; font-family: var(--f-display); font-size: 1.3rem; }
+.depthpick.sel { border-color: var(--rare); color: var(--rare); background: #2b2314; }
+.depthrules { list-style: none; margin: 10px auto 0; padding: 12px 14px; max-width: 560px; display: grid; gap: 4px; text-align: left; font-size: .88rem; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+.depthrules b { color: #e7837b; font-weight: normal; font-family: var(--f-label); }
+.depthteaser { text-align: center; }
+.stat.depth b { color: #e7837b; }
+.guardline { display: flex; gap: 10px; align-items: center; margin: 0; padding: 8px 10px; background: #1c0f12; border: 1px solid #6e1a16; border-radius: 4px; font-size: .9rem; color: var(--muted); }
+.guardline b { color: var(--text); font-weight: normal; font-family: var(--f-label); }
+.portrait.guardart { width: 40px; height: 40px; flex: none; }

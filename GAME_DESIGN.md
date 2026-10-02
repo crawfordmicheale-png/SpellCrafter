@@ -309,13 +309,14 @@ Passive trinkets. Each elite offers a choice of 3. Reliquary boxes have a 15% ch
 
 Each act's **elite** guards the way out of its haunted delves. The **guardian** waits at the top of the act's map. Both drop a choice of 3 relics. In the Last Library, haunted delves can hold any of the three elites.
 
-| Act | Elite | Guardian (phase 2 at half HP) |
+| Act | Elite | Guardian, one of two (phase 2 at half HP) |
 |---|---|---|
-| The Chapel Ruins | The Gravedigger (40) | The Bell Warden (54): *The bell cracks* |
-| The Drowned Archive | The Drowned Abbot (48) | The Pale Scrivener (62): *The Scrivener writes back* |
-| The Catacombs | The Choirmaster (54) | The Ossuary Saint (68): *The Saint rises* |
+| The Chapel Ruins | The Gravedigger (40) | The Bell Warden (54): *The bell cracks* · The Hollow Bishop (56): *The mitre falls* |
+| The Drowned Archive | The Drowned Abbot (48) | The Pale Scrivener (62): *The Scrivener writes back* · The Leviathan Index (60): *The Index turns* (smudges cards like an Ink Leech) |
+| The Catacombs | The Choirmaster (54) | The Ossuary Saint (68): *The Saint rises* · The Bone Cantor (66): *The last verse* (tarnishes metal like a Rust Wraith) |
 | The Last Library | any of the three | The Unbound Grimoire (110, boss): *The final page* |
 
+- **Guardian pool:** each act's map picks one of its two guardians when it is generated, and the map's sidebar shows which one waits at the top, so you can craft for it.
 - **Phase 2:** when a guardian or the boss drops to half HP, a banner announces the change. It gains Strength and Block and switches to a harder move set, starting from that set's first move.
 - Phase changes can be triggered by direct damage, the Detonate reaction, or poison ticks.
 
@@ -434,6 +435,22 @@ All sound is synthesized in the browser (Web Audio), so there are no audio files
 | The Gilded Heretic | 120 gold, a Gold Card and Gold Ink; a 70-oil lantern | Reach the Catacombs |
 - No permanent stat boosts, so each run stays fair.
 
+### 10.1 Depths
+Harder runs, unlocked one level at a time: winning at your highest open Depth opens the next. Choose the Depth on the title screen. Each level keeps every rule below it.
+
+| Depth | Rule |
+|---|---|
+| 1 | Tougher guardians: elites, guardians and the Grimoire have 10% more HP |
+| 2 | A smaller lantern: 15 less oil |
+| 3 | Hungrier dark: ordinary monsters start fights with 1 Strength |
+| 4 | Cold scriptoria: resting heals 20% instead of 30% |
+| 5 | A blotted deck: you start with a Blot, a card that cannot be cast (burn it or salvage it) |
+| 6 | Restless dead: random encounters are 25% more likely |
+| 7 | Greedy merchants: prices and repairs cost 25% more |
+| 8 | The Grimoire stirs: guardians and the Grimoire start with 2 Strength |
+
+The top bar shows the run's Depth, and the end screen announces a newly opened one.
+
 ---
 
 ## 11. Open Questions
@@ -461,4 +478,5 @@ Decided: random encounters stay as they are (driven by Dread). Lantern oil is in
 10. ~~Overworld act maps with branching paths, smaller delves, scriptoria, and the Sister Vell storyline~~ (done)
 11. ~~Simpler crafting: no refining, one rule for a second ink, recipe hints, four-part recipes, signatures and names~~ (done)
 12. ~~Delve conditions on the map, pests that go after your cards, a deck viewer~~ (done)
-13. Next: Depths (difficulty levels after a win) and a guardian pool, playtesting feedback.
+13. ~~Depths and a guardian pool~~ (done)
+14. Next: playtesting feedback.

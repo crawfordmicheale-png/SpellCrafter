@@ -637,8 +637,11 @@ test('unknown nodes and the guardian resolve', () => {
   assert.ok(run.seenEvents.includes(ev.event));
   node.type = 'guardian';
   run.map.pos = null;
-  assert.deepEqual(enterNode(run, node.id).enemies, ['warden']);
+  const g = enterNode(run, node.id).enemies[0];
+  assert.equal(g, run.map.guardian);
+  assert.ok(REGIONS[0].guardians.includes(g));
   run.regionIdx = 3;
+  run.map.act = 3; run.map.guardian = 'grimoire';
   run.map.pos = null;
   const boss = enterNode(run, node.id);
   assert.equal(boss.kind, 'boss');
@@ -792,4 +795,70 @@ test('flooded delves wear paper twice as fast', () => {
   c.hand.push(paper); c.player.energy = 3;
   playCard(c, paper.uid, 0);
   assert.equal(paper.durability, 1);
+});
+
+test('each act picks one of two guardians; the last act is always the Grimoire', () => {
+  const seen = [new Set(), new Set(), new Set(), new Set()];
+  for (let seed = 1; seed <= 40; seed++) {
+    for (let act = 0; act < REGIONS.length; act++) seen[act].add(generateMap(act, seed).guardian);
+  }
+  assert.deepEqual([...seen[0]].sort(), ['bishop', 'warden']);
+  assert.deepEqual([...seen[1]].sort(), ['index', 'scrivener']);
+  assert.deepEqual([...seen[2]].sort(), ['cantor', 'saint']);
+  assert.deepEqual([...seen[3]], ['grimoire']);
+});
+
+test('the new guardians change phase and use their tricks', async () => {
+  const { ENEMIES } = await import('../js/data.js');
+  for (const key of ['bishop', 'index', 'cantor']) {
+    const run = createRun(50);
+    const c = createCombat(run, [key], () => 0.5);
+    assert.ok(ENEMIES[key].guardian && ENEMIES[key].phase2);
+    c.enemies[0].hp = Math.floor(c.enemies[0].maxHp / 2) + 1;
+    c.hand = [{ ...run.deck[0], uid: 'zz' }];
+    c.player.energy = 3;
+    playCard(c, 'zz', 0);
+    assert.equal(c.enemies[0].phase, 1, key);
+  }
+});
+
+test('depths stack their rules', async () => {
+  const { fightOptions, priceFor, campChoice: camp, buyOil: oil } = await import('../js/run.js');
+  const easy = createRun(60), hard = createRun(60, [], 'inkbinder', 8);
+  assert.equal(hard.depth, 8);
+  assert.equal(hard.oilMax, 85);
+  assert.ok(hard.deck.some(k => k.starter === 'blot'));
+  assert.ok(!easy.deck.some(k => k.starter === 'blot'));
+  assert.deepEqual(fightOptions(easy, 'random'), { hpMult: 1, strength: 0 });
+  assert.deepEqual(fightOptions(hard, 'random'), { hpMult: 1, strength: 1 });
+  assert.equal(fightOptions(hard, 'elite').hpMult, 1.1);
+  assert.equal(fightOptions(hard, 'guardian').strength, 2);
+  assert.equal(priceFor(hard, 20), 25);
+  assert.equal(priceFor(easy, 20), 20);
+  hard.hp = 10;
+  assert.equal(camp(hard, { type: 'camp' }, 'rest').heal, 12); // 20% of 60
+  // A Blot cannot be cast.
+  const c = createCombat(hard, ['gravemoth'], () => 0.5, fightOptions(hard, 'random'));
+  assert.equal(c.enemies[0].strength, 1);
+  const blot = hard.deck.find(k => k.starter === 'blot');
+  c.hand.push(blot);
+  assert.match(playCard(c, blot.uid, 0), /cannot be cast/);
+  // Depth 2 still lets you fill the smaller lantern.
+  hard.oil = 50; hard.gold = 100;
+  oil(hard);
+  assert.equal(hard.oil, 85);
+  assert.equal(hard.gold, 81);
+});
+
+test('winning opens the next depth, once', async () => {
+  const { freshMeta, recordRun } = await import('../js/meta.js');
+  const store = { data: {}, getItem(k) { return this.data[k] ?? null; }, setItem(k, v) { this.data[k] = v; }, removeItem(k) { delete this.data[k]; } };
+  const meta = freshMeta();
+  assert.equal(recordRun(meta, { won: false, depth: 2, level: 0, maxLevel: 8 }, store).unlocked, null);
+  assert.equal(recordRun(meta, { won: true, depth: 3, level: 0, maxLevel: 8 }, store).unlocked, 1);
+  assert.equal(recordRun(meta, { won: true, depth: 3, level: 0, maxLevel: 8 }, store).unlocked, null);
+  assert.equal(recordRun(meta, { won: true, depth: 3, level: 1, maxLevel: 8 }, store).unlocked, 2);
+  meta.depthUnlocked = 8;
+  assert.equal(recordRun(meta, { won: true, depth: 3, level: 8, maxLevel: 8 }, store).unlocked, null);
+  assert.equal(meta.bestDepth, 8);
 });

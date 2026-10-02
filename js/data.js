@@ -262,6 +262,8 @@ export const STARTER_CARDS = {
   strike:   { name: 'Strike',   cost: 1, effects: [{ type: 'damage', amount: 5 }], colors: ['red'] },
   guard:    { name: 'Guard',    cost: 1, effects: [{ type: 'block', amount: 5 }],  colors: ['white'] },
   scribble: { name: 'Scribble', cost: 0, effects: [{ type: 'draw', amount: 1 }],   colors: ['blue'] },
+  // Depth 5 starts you with one. It clogs your hand until you burn or salvage it.
+  blot:     { name: 'Blot',     cost: 0, effects: [], colors: ['black'], unplayable: true },
 };
 export const STARTER_DECK = ['strike', 'strike', 'strike', 'strike', 'strike', 'guard', 'guard', 'guard', 'guard', 'scribble'];
 
@@ -345,6 +347,26 @@ export const ENEMIES = {
     ],
     drops: ['ench_echo', 'raw_silver', 'raw_silver', 'raw_heart', 'raw_slate', 'raw_gold', 'raw_ichor'],
   },
+  bishop: {
+    name: 'The Hollow Bishop', hp: 56, elite: true, guardian: true,
+    desc: 'He blesses everyone who comes down the stair. The blessing is a kind of drowning.',
+    phase2: {
+      at: 0.5, name: 'The mitre falls',
+      text: 'His mitre rolls away. There is nothing under it but a mouth.',
+      strength: 1, block: 6,
+      moves: [
+        { actions: [{ type: 'attack', amount: 11 }] },
+        { actions: [{ type: 'attack', amount: 3, times: 3 }] },
+        { actions: [{ type: 'block', amount: 8 }, { type: 'buff', status: 'strength', amount: 1 }] },
+      ],
+    },
+    moves: [
+      { actions: [{ type: 'attack', amount: 8 }] },
+      { actions: [{ type: 'debuff', status: 'weak', amount: 2 }, { type: 'block', amount: 6 }] },
+      { actions: [{ type: 'attack', amount: 5 }, { type: 'debuff', status: 'poison', amount: 2 }] },
+    ],
+    drops: ['ench_hallowed', 'raw_silver', 'raw_gold', 'raw_heart', 'raw_slate', 'raw_ichor'],
+  },
   scrivener: {
     name: 'The Pale Scrivener', hp: 62, elite: true, guardian: true,
     desc: 'An Inkbinder who wrote one spell too many. The ink wrote back.',
@@ -391,6 +413,46 @@ export const ENEMIES = {
       { actions: [{ type: 'attack', amount: 6 }] },
     ],
     drops: ['raw_kelp', 'raw_gravesoil', 'ench_bound', 'raw_gold'],
+  },
+  index: {
+    name: 'The Leviathan Index', hp: 60, elite: true, guardian: true,
+    desc: 'A great eel stitched together from catalogue cards. It knows where every book is, and where you are.',
+    phase2: {
+      at: 0.5, name: 'The Index turns',
+      text: 'Ten thousand cards flip at once. It has found your entry.',
+      strength: 1, block: 8,
+      moves: [
+        { actions: [{ type: 'attack', amount: 5, times: 3 }] },
+        { actions: [{ type: 'smudge' }, { type: 'attack', amount: 8 }] },
+        { actions: [{ type: 'debuff', status: 'weak', amount: 2 }, { type: 'attack', amount: 6 }] },
+      ],
+    },
+    moves: [
+      { actions: [{ type: 'attack', amount: 4, times: 2 }] },
+      { actions: [{ type: 'smudge' }, { type: 'attack', amount: 6 }] },
+      { actions: [{ type: 'block', amount: 10 }, { type: 'debuff', status: 'poison', amount: 3 }] },
+    ],
+    drops: ['ench_bound', 'raw_silver', 'raw_wisp', 'raw_wisp', 'raw_kelp', 'raw_ichor'],
+  },
+  cantor: {
+    name: 'The Bone Cantor', hp: 66, elite: true, guardian: true,
+    desc: 'The last voice in the catacombs. Every note costs it a bone. It has plenty.',
+    phase2: {
+      at: 0.5, name: 'The last verse',
+      text: 'It sings with no breath left. The dead join in.',
+      strength: 2, block: 10,
+      moves: [
+        { actions: [{ type: 'attack', amount: 14 }] },
+        { actions: [{ type: 'attack', amount: 4, times: 4 }] },
+        { actions: [{ type: 'block', amount: 12 }, { type: 'debuff', status: 'weak', amount: 2 }] },
+      ],
+    },
+    moves: [
+      { actions: [{ type: 'buff', status: 'strength', amount: 2 }, { type: 'block', amount: 8 }] },
+      { actions: [{ type: 'attack', amount: 12 }] },
+      { actions: [{ type: 'tarnish' }, { type: 'attack', amount: 5, times: 2 }] },
+    ],
+    drops: ['ench_echo', 'ench_hallowed', 'raw_gold', 'raw_slate', 'raw_heart', 'raw_ichor'],
   },
   saint: {
     name: 'The Ossuary Saint', hp: 68, elite: true, guardian: true,
@@ -515,7 +577,7 @@ export const REGIONS = [
     intro: 'Pews split for firewood. Bones in every niche. Somewhere below, a bell.',
     raws: { ash: 3, bone: 3, rags: 2, timber: 2, gravesoil: 2, bloodroot: 2, moss: 1 },
     encounters: [['acolyte'], ['gravemoth', 'gravemoth'], ['gravemoth'], ['acolyte', 'gravemoth'], ['papermoth'], ['papermoth', 'gravemoth']],
-    elites: ['gravedigger'], guardian: 'warden', hpMult: 1,
+    elites: ['gravedigger'], guardians: ['warden', 'bishop'], hpMult: 1,
     tiles: { 1: '#2b2430', 2: '#352c3c', 3: '#1d1822', 4: '#4f7a45', 5: '#4a3f50', 6: '#6b5a74', 7: '#2a2230', 8: '#1f1a24', 9: '#231c28' },
   },
   {
@@ -523,7 +585,7 @@ export const REGIONS = [
     intro: 'The river took the library a century ago. The scribes never stopped working.',
     raws: { kelp: 3, moss: 2, slate: 2, silver: 2, rags: 2, bloodroot: 1, bone: 1 },
     encounters: [['drowned'], ['drowned', 'gravemoth'], ['hound'], ['ghoul'], ['inkleech'], ['inkleech', 'papermoth']],
-    elites: ['abbot'], guardian: 'scrivener', hpMult: 1.1,
+    elites: ['abbot'], guardians: ['scrivener', 'index'], hpMult: 1.1,
     tiles: { 1: '#1f2a30', 2: '#27363d', 3: '#141c21', 4: '#3f7a6f', 5: '#3a4d56', 6: '#557582', 7: '#1f2c33', 8: '#162027', 9: '#18242a' },
   },
   {
@@ -531,7 +593,7 @@ export const REGIONS = [
     intro: 'The dead here were buried standing up, facing the stair. They are still waiting for someone to come down it.',
     raws: { bone: 3, gravesoil: 3, ash: 2, slate: 2, silver: 1, moss: 1, timber: 1 },
     encounters: [['wraith'], ['boneweaver'], ['wraith', 'acolyte'], ['boneweaver', 'gravemoth'], ['rustwraith'], ['rustwraith', 'inkleech']],
-    elites: ['choirmaster'], guardian: 'saint', hpMult: 1.2,
+    elites: ['choirmaster'], guardians: ['saint', 'cantor'], hpMult: 1.2,
     tiles: { 1: '#2a2826', 2: '#34312d', 3: '#1a1816', 4: '#6b6a4a', 5: '#4d4944', 6: '#79736a', 7: '#2a2724', 8: '#1e1c1a', 9: '#22201e' },
   },
   {
@@ -539,7 +601,7 @@ export const REGIONS = [
     intro: 'Every book here was written by an Inkbinder. Most of them are still screaming.',
     raws: { gold: 2, silver: 2, bloodroot: 2, gravesoil: 2, bone: 1, slate: 1, kelp: 1 },
     encounters: [['hound', 'ghoul'], ['inkling', 'inkling'], ['ghoul', 'gravemoth', 'gravemoth'], ['inkling', 'wraith'], ['boneweaver', 'inkling'], ['rustwraith', 'papermoth'], ['inkleech', 'inkling']],
-    elites: ['gravedigger', 'abbot', 'choirmaster'], guardian: null, boss: 'grimoire', hpMult: 1.3,
+    elites: ['gravedigger', 'abbot', 'choirmaster'], guardians: null, boss: 'grimoire', hpMult: 1.3,
     tiles: { 1: '#2e2320', 2: '#392b26', 3: '#1e1614', 4: '#8a6a2a', 5: '#523a2e', 6: '#7a5840', 7: '#2e201a', 8: '#221814', 9: '#241915' },
   },
 ];
@@ -738,6 +800,19 @@ export const STORY = {
   },
 };
 export const STORY_ALLY_TRUST = 2;
+
+// Depths: harder runs, unlocked one at a time by winning. Each level adds its rule
+// to all the ones below it.
+export const DEPTHS = [
+  { name: 'Tougher guardians', desc: 'Elites, guardians and the Grimoire have 10% more HP.' },
+  { name: 'A smaller lantern', desc: 'Your lantern holds 15 less oil.' },
+  { name: 'Hungrier dark', desc: 'Ordinary monsters start every fight with 1 Strength.' },
+  { name: 'Cold scriptoria', desc: 'Resting at a scriptorium heals 20% instead of 30%.' },
+  { name: 'A blotted deck', desc: 'You start with a Blot, a card that cannot be cast. Burn it or salvage it.' },
+  { name: 'Restless dead', desc: 'Random encounters are 25% more likely.' },
+  { name: 'Greedy merchants', desc: 'Merchant prices and repairs cost 25% more.' },
+  { name: 'The Grimoire stirs', desc: 'Guardians and the Grimoire start every fight with 2 Strength.' },
+];
 
 // Playable Inkbinders. Each starts differently and unlocks through lifetime progress.
 // `start` adds to (inventory) or replaces (other fields) the normal starting values.

@@ -217,6 +217,7 @@ export function step(world, run, dx, dy, rng = Math.random) {
   if (world.stepsSinceFight < ENCOUNTER.graceSteps) return {};
   let chance = Math.min(ENCOUNTER.max, ENCOUNTER.base + run.dread * ENCOUNTER.perDread);
   chance *= DELVE_CONDITIONS[world.cond]?.encounterMult ?? 1;
+  if ((run.depth || 0) >= 6) chance *= 1.25; // Depth 6: restless dead
   if (run.oil <= 0) chance *= LANTERN.darkEncounterMult;
   if (rng() < chance) {
     world.stepsSinceFight = 0;

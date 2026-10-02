@@ -1,14 +1,14 @@
 import {
   ENEMIES, INGREDIENTS, PRICES, REGIONS, STARTER_DECK, STARTING_INVENTORY, PLAYER_START, PICKUP,
   CARD_MATERIALS, BENCH_REST_HEAL, RAW_MATERIALS, DESCEND_HEAL, LANTERN, RELICS, RELIC_PRICE, CHEST_RELIC_CHANCE,
-  VARIANTS, CORRUPTION, EVENTS, MAP, DELVE, CAMP, OIL_WARE, DELVE_CONDITIONS,
+  VARIANTS, CORRUPTION, EVENTS, MAP, DELVE, CAMP, OIL_WARE, DELVE_CONDITIONS, DEPTHS,
 } from './data.js';
 import { makeStarterCard, craftCard, validateBlueprint, salvageRoll, ensureUidAbove, applyWear, gainItem, spendPlan, applySignature } from './crafting.js';
 import { generateRegion, lightRadius, reveal } from './world.js';
 import { generateMap, availableNodes, guardianOf } from './overworld.js';
 import { lastBeat } from './events.js';
 
-export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecipes = [], variant = 'inkbinder') {
+export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecipes = [], variant = 'inkbinder', depth = 0) {
   const run = {
     ...PLAYER_START,
     seed,
@@ -28,17 +28,37 @@ export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecip
     corruption: 0,
     oilMax: LANTERN.max,
     perks: [],
+    depth: Math.max(0, Math.min(DEPTHS.length, depth)),
   };
   const { inventory = {}, relics = [], ...rest } = VARIANTS[variant]?.start || {};
   Object.assign(run, rest);
   for (const [id, n] of Object.entries({ ...STARTING_INVENTORY })) gainItem(run.inventory, id, n);
   for (const [id, n] of Object.entries(inventory)) gainItem(run.inventory, id, n);
   for (const id of relics) gainRelic(run, id);
+  if (atDepth(run, 2)) { run.oilMax -= 15; run.oil = Math.min(run.oil, run.oilMax); }
+  if (atDepth(run, 5)) run.deck.push(makeStarterCard('blot'));
   run.map = generateMap(0, seed);
   return run;
 }
 
 export const oilMax = run => run.oilMax ?? LANTERN.max;
+
+// ---------- depths ----------
+
+export const atDepth = (run, n) => (run.depth || 0) >= n;
+
+// Fight tuning for this run: act scaling plus whatever the Depth adds.
+export function fightOptions(run, kind) {
+  const big = kind === 'elite' || kind === 'guardian' || kind === 'boss';
+  const top = kind === 'guardian' || kind === 'boss';
+  return {
+    hpMult: currentRegion(run).hpMult * (big && atDepth(run, 1) ? 1.1 : 1),
+    strength: (kind === 'random' && atDepth(run, 3) ? 1 : 0) + (top && atDepth(run, 8) ? 2 : 0),
+  };
+}
+
+// Merchants charge more from Depth 7.
+export const priceFor = (run, base) => (atDepth(run, 7) ? Math.ceil(base * 1.25) : base);
 
 // Which Inkbinders a player's lifetime progress has unlocked.
 export function isUnlocked(meta, variant) {
@@ -160,7 +180,7 @@ function resolveNode(run, node, rng) {
       return { type: 'story', event: beat };
     }
     case 'guardian':
-      return { type: 'fight', enemies: [guardianOf(run.regionIdx)], kind: region.boss ? 'boss' : 'guardian' };
+      return { type: 'fight', enemies: [guardianOf(run.map)], kind: region.boss ? 'boss' : 'guardian' };
     case 'unknown': {
       const r = rng();
       if (r < MAP.unknown.ambush) return { type: 'fight', enemies: pickFrom(region.encounters, rng), kind: 'random' };
@@ -190,7 +210,7 @@ export function campChoice(run, node, choice) {
   if (node.campUsed) return { error: 'You have already made your choice here.' };
   if (choice === 'rest') {
     const before = run.hp;
-    run.hp = Math.min(run.maxHp, run.hp + Math.round(run.maxHp * CAMP.heal));
+    run.hp = Math.min(run.maxHp, run.hp + Math.round(run.maxHp * (atDepth(run, 4) ? 0.2 : CAMP.heal)));
     run.dread = Math.max(0, run.dread - CAMP.dread);
     const cleansed = Math.min(run.corruption || 0, CAMP.corruption);
     run.corruption -= cleansed;
@@ -208,9 +228,10 @@ export function campChoice(run, node, choice) {
 }
 
 export function buyOil(run) {
-  if (run.gold < OIL_WARE.price) return { error: 'Not enough gold.' };
+  const price = priceFor(run, OIL_WARE.price);
+  if (run.gold < price) return { error: 'Not enough gold.' };
   if (run.oil >= oilMax(run)) return { error: 'Your lantern is already full.' };
-  run.gold -= OIL_WARE.price;
+  run.gold -= price;
   const before = run.oil;
   run.oil = Math.min(oilMax(run), run.oil + OIL_WARE.oil);
   return { oil: run.oil - before };
@@ -370,9 +391,10 @@ export function rollShop(rng = Math.random, run = null) {
   const ids = Object.keys(INGREDIENTS).filter(id => !PICKUP[id]);
   const stock = new Set();
   while (stock.size < 9) stock.add(pick(ids, rng));
-  const wares = [...stock].map(id => ({ id, price: PRICES[INGREDIENTS[id].rarity], sold: false }));
+  const cost = n => (run ? priceFor(run, n) : n);
+  const wares = [...stock].map(id => ({ id, price: cost(PRICES[INGREDIENTS[id].rarity]), sold: false }));
   const relic = run && relicChoices(run, 1, rng)[0];
-  if (relic) wares.push({ relic, price: RELIC_PRICE, sold: false });
+  if (relic) wares.push({ relic, price: cost(RELIC_PRICE), sold: false });
   return wares;
 }
 
@@ -402,6 +424,7 @@ export function deserializeRun(text) {
   run.relics ||= [];
   run.corruption ||= 0;   // saves from before Corruption existed
   run.perks ||= [];
+  run.depth ||= 0;
   run.variant ||= 'inkbinder';
   run.deck = run.deck.map(k => ({ ...k, durability: unfin(k.durability), maxDurability: unfin(k.maxDurability) }));
   if (run.world) {
