@@ -2,6 +2,7 @@ import {
   ENEMIES, INGREDIENTS, PRICES, REGIONS, STARTER_DECK, STARTING_INVENTORY, PLAYER_START, PICKUP,
   CARD_MATERIALS, BENCH_REST_HEAL, RAW_MATERIALS, DESCEND_HEAL, LANTERN, RELICS, RELIC_PRICE, CHEST_RELIC_CHANCE,
   VARIANTS, CORRUPTION, EVENTS, MAP, DELVE, CAMP, OIL_WARE, DELVE_CONDITIONS, DEPTHS,
+  UNLOCKS, SPECIAL_RELICS, TRAPS, MERCHANT,
 } from './data.js';
 import { makeStarterCard, craftCard, validateBlueprint, salvageRoll, ensureUidAbove, applyWear, gainItem, spendPlan, applySignature } from './crafting.js';
 import { generateRegion, lightRadius, reveal } from './world.js';
@@ -29,6 +30,9 @@ export function createRun(seed = Math.floor(Math.random() * 2 ** 31), knownRecip
     oilMax: LANTERN.max,
     perks: [],
     depth: Math.max(0, Math.min(DEPTHS.length, depth)),
+    unlockCount: knownRecipes.length, // spells known at the start decide what is unlocked
+    merchant: { met: 0, favor: null, done: 0, used: [] },
+    daily: null,
   };
   const { inventory = {}, relics = [], ...rest } = VARIANTS[variant]?.start || {};
   Object.assign(run, rest);
@@ -51,14 +55,20 @@ export const atDepth = (run, n) => (run.depth || 0) >= n;
 export function fightOptions(run, kind) {
   const big = kind === 'elite' || kind === 'guardian' || kind === 'boss';
   const top = kind === 'guardian' || kind === 'boss';
+  const flooded = DELVE_CONDITIONS[run.world?.cond]?.paperWear || 0;
   return {
     hpMult: currentRegion(run).hpMult * (big && atDepth(run, 1) ? 1.1 : 1),
     strength: (kind === 'random' && atDepth(run, 3) ? 1 : 0) + (top && atDepth(run, 8) ? 2 : 0),
+    paperWear: hasRelic(run, 'oilskin') ? 0 : flooded,
   };
 }
 
 // Merchants charge more from Depth 7.
-export const priceFor = (run, base) => (atDepth(run, 7) ? Math.ceil(base * 1.25) : base);
+export const priceFor = (run, base) => {
+  let n = atDepth(run, 7) ? Math.ceil(base * 1.25) : base;
+  if (hasRelic(run, 'scale')) n = Math.ceil(n * 0.75);
+  return n;
+};
 
 // Which Inkbinders a player's lifetime progress has unlocked.
 export function isUnlocked(meta, variant) {
@@ -81,7 +91,17 @@ function enterWorld(run, world) {
 // ---------- relics ----------
 
 export const hasRelic = (run, id) => run.relics.includes(id);
-export const unownedRelics = run => Object.keys(RELICS).filter(id => !hasRelic(run, id));
+// ---------- unlocks ----------
+
+// Is this enchantment or relic still locked for this run?
+export const isLocked = (run, kind, id) => UNLOCKS.some(u => u.kind === kind && u.id === id && u.at > (run.unlockCount ?? 0));
+const itemLocked = (run, id) => id.startsWith('ench_') && isLocked(run, 'enchant', id.slice(5));
+
+// Unlocks that a Grimoire of `known` spells has opened, past `before`.
+export const unlocksBetween = (before, known) => UNLOCKS.filter(u => u.at > before && u.at <= known);
+
+export const unownedRelics = run => Object.keys(RELICS)
+  .filter(id => !hasRelic(run, id) && !SPECIAL_RELICS.has(id) && !isLocked(run, 'relic', id));
 
 export function gainRelic(run, id) {
   if (hasRelic(run, id)) return;
@@ -194,6 +214,74 @@ function resolveNode(run, node, rng) {
     }
   }
   return { type: 'none' };
+}
+
+// ---------- delve secrets ----------
+
+// Springs a trap you stepped on. Returns { name, text }.
+export function springTrap(run, trap) {
+  const t = TRAPS[trap.trap];
+  trap.gone = true;
+  const bits = [];
+  if (t.hp) { const n = Math.min(t.hp, run.hp - 1); run.hp -= n; bits.push(`-${n} HP`); }
+  if (t.dread) { run.dread += t.dread; bits.push(`+${t.dread} Dread`); }
+  if (t.oil) {
+    const n = Math.min(t.oil, run.oil);
+    run.oil -= n;
+    if (run.world) { run.world.radius = lightRadius(run.oil); }
+    bits.push(`-${n} oil`);
+  }
+  return { name: t.name, text: `${t.text} (${bits.join(', ')}).` };
+}
+
+// Climb down a trapdoor into the level beneath. There is no way back up, only out.
+export function enterLower(run) {
+  if (!run.world || run.world.lower) return { error: 'There is nothing beneath this.' };
+  const seed = run.world.seed + 999;
+  enterWorld(run, generateRegion(run.regionIdx, seed, { lower: true }));
+  return { ok: true };
+}
+
+// ---------- the Rag Merchant ----------
+
+// Called on each visit. Returns his line, and asks a favor if none is open.
+export function meetMerchant(run, rng = Math.random) {
+  const m = run.merchant ||= { met: 0, favor: null, done: 0, used: [] };
+  const line = MERCHANT.lines[Math.min(m.met, MERCHANT.lines.length - 1)];
+  m.met++;
+  if (!m.favor && m.done < MERCHANT.done.length) {
+    const open = MERCHANT.favors.map((f, i) => i).filter(i => !m.used.includes(i));
+    if (open.length) {
+      const i = open[Math.floor(rng() * open.length)];
+      m.used.push(i);
+      m.favor = i;
+    }
+  }
+  return { line, favor: m.favor != null ? MERCHANT.favors[m.favor] : null };
+}
+
+export const canDeliver = run => {
+  const f = run.merchant?.favor != null ? MERCHANT.favors[run.merchant.favor] : null;
+  return !!f && (run.inventory[f.item] || 0) >= f.n;
+};
+
+// Hand over what he asked for. Returns { text, relic?, gold?, items? }.
+export function deliverFavor(run, rng = Math.random) {
+  if (!canDeliver(run)) return { error: 'You do not have what he asked for.' };
+  const m = run.merchant;
+  const f = MERCHANT.favors[m.favor];
+  removeItem(run, f.item, f.n);
+  m.favor = null;
+  const step = m.done++;
+  const text = MERCHANT.done[step];
+  if (step === 0) {
+    run.gold += 40;
+    addItem(run, 'ess_pristine');
+    return { text, gold: 40, items: ['ess_pristine'] };
+  }
+  const relic = step === 1 ? relicChoices(run, 1, rng)[0] : 'scale';
+  if (relic) gainRelic(run, relic);
+  return { text, relic };
 }
 
 // Climb out of a delve and back onto the map. The open air eases your Dread.
@@ -336,10 +424,10 @@ export function salvageCard(run, cardUid, rng = Math.random) {
 const pick = (arr, rng) => arr[Math.floor(rng() * arr.length)];
 
 // Loot for a won fight. Each enemy drops from its own themed table.
-export function rollRewards(enemyKeys, { elite = false, boss = false, dice = false } = {}, rng = Math.random) {
+export function rollRewards(enemyKeys, { elite = false, boss = false, dice = false, run = null } = {}, rng = Math.random) {
   const items = [];
   for (const key of enemyKeys) {
-    const drops = ENEMIES[key].drops;
+    const drops = ENEMIES[key].drops.filter(id => !run || !itemLocked(run, id));
     if (!drops.length) continue;
     const n = (ENEMIES[key].elite ? 3 : 1 + (rng() < 0.4 ? 1 : 0)) + (dice && rng() < 1 / 3 ? 1 : 0);
     for (let i = 0; i < n; i++) items.push(pick(drops, rng));
@@ -357,13 +445,15 @@ export function scavenge(run, node) {
   return { items, pristine: !!node.pristine };
 }
 
-const CHEST_LOOT = ['raw_silver', 'raw_slate', 'raw_gold', 'raw_heart', 'ench_echo', 'ench_swift', 'ench_leech', 'ench_volatile', 'ench_hungering'];
+const CHEST_LOOT = ['raw_silver', 'raw_slate', 'raw_gold', 'raw_heart', 'ench_echo', 'ench_swift', 'ench_leech', 'ench_volatile', 'ench_hungering', 'raw_mirror', 'ench_serrated', 'ench_withering'];
 
 export function openChest(run, chest, rng = Math.random) {
-  const items = [pick(CHEST_LOOT, rng)];
+  const loot = CHEST_LOOT.filter(id => !itemLocked(run, id));
+  const items = [pick(loot, rng)];
   if (rng() < 0.5) items.push(pick(Object.keys(RAW_MATERIALS).filter(k => k !== 'heart').map(k => `raw_${k}`), rng));
   const bonus = DELVE_CONDITIONS[run.world?.cond]?.chestBonus || 0; // lightless delves hide more
-  for (let i = 0; i < bonus; i++) items.push(pick(CHEST_LOOT, rng));
+  if (chest.secret) items.push(pick(loot, rng)); // what someone bothered to wall up
+  for (let i = 0; i < bonus; i++) items.push(pick(loot, rng));
   const gold = 10 + Math.floor(rng() * 20);
   const got = items.flatMap(id => addItem(run, id));
   run.gold += gold;
@@ -388,7 +478,7 @@ export function applyRewards(run, rewards) {
 
 export function rollShop(rng = Math.random, run = null) {
   // Ready-made ingredients, plus slate, silver and gold. Never loose finds.
-  const ids = Object.keys(INGREDIENTS).filter(id => !PICKUP[id]);
+  const ids = Object.keys(INGREDIENTS).filter(id => !PICKUP[id] && !(run && itemLocked(run, id)));
   const stock = new Set();
   while (stock.size < 9) stock.add(pick(ids, rng));
   const cost = n => (run ? priceFor(run, n) : n);
@@ -425,6 +515,8 @@ export function deserializeRun(text) {
   run.corruption ||= 0;   // saves from before Corruption existed
   run.perks ||= [];
   run.depth ||= 0;
+  run.unlockCount ??= 0;
+  run.merchant ||= { met: 0, favor: null, done: 0, used: [] };
   run.variant ||= 'inkbinder';
   run.deck = run.deck.map(k => ({ ...k, durability: unfin(k.durability), maxDurability: unfin(k.maxDurability) }));
   if (run.world) {

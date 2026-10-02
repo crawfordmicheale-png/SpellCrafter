@@ -280,6 +280,7 @@ const EFFECT_TEXT = {
   poison: n => `Apply ${n} Poison.`,
   loseMaxHp: n => `Lose ${n} max HP.`,
   nextFree: () => 'Your next card this turn costs 0.',
+  mimic: n => `Repeat your last card at ${n}% power.`,
 };
 
 export function describeCard(card) {
@@ -290,6 +291,8 @@ export function describeCard(card) {
   if (card.goldOnCast) lines.push(`Gain ${card.goldOnCast} gold.`);
   if (card.enchants.includes('hallowed')) lines.push('Gain 4 Block.');
   if (card.enchants.includes('piercing')) lines.push('Ignores Block.');
+  if (card.enchants.includes('serrated')) lines.push('Bleed 2 on a hit.');
+  if (card.enchants.includes('withering')) lines.push('Apply 2 Frail.');
   return lines;
 }
 

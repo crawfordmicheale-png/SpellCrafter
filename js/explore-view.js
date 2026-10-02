@@ -1,4 +1,4 @@
-import { REGIONS, RAW_MATERIALS, ENEMIES, EVENTS } from './data.js';
+import { REGIONS, RAW_MATERIALS, ENEMIES, EVENTS, TRAPS } from './data.js';
 import { isFloor } from './world.js';
 import { sprite, NODE_SPRITES } from './sprites.js';
 
@@ -16,6 +16,9 @@ export function objectName(obj) {
     case 'up': return 'Stairs up to the surface';
     case 'event': return EVENTS[obj.event].name;
     case 'elite': case 'boss': return ENEMIES[obj.enemy].name;
+    case 'crack': return 'A cracked wall';
+    case 'trap': return TRAPS[obj.trap].name;
+    case 'hatch': return 'A trapdoor';
   }
   return '';
 }
@@ -30,12 +33,16 @@ function objectSprite(o) {
     case 'up': return ['stairsUp'];
     case 'event': return [o.event];
     case 'elite': case 'boss': return [o.enemy];
+    case 'crack': return ['crack'];
+    case 'trap': return ['trap'];
+    case 'hatch': return ['hatch'];
   }
   return null;
 }
 
 // Draws the world around the player on a canvas.
-export function createExploreView(canvas, world, { onTile, onHover, playerSwap }) {
+// sharpEyes(): traps always show and cracked walls glint (the Cartographer's Chalk).
+export function createExploreView(canvas, world, { onTile, onHover, onSwipe, playerSwap, sharpEyes = () => false }) {
   const ctx = canvas.getContext('2d');
   const tiles = REGIONS[world.regionIdx].tiles;
   let cols = 17, rows = 11, camX = 0, camY = 0, raf = 0, alive = true;
@@ -125,6 +132,8 @@ export function createExploreView(canvas, world, { onTile, onHover, playerSwap }
     const bobbing = reduceMotion() ? 0 : Math.round(Math.sin(t / 420)) * scale; // idle hover for creatures
     for (const o of world.objects) {
       if (o.gone || !inMap(o.x, o.y) || !world.seen[o.y * world.w + o.x]) continue;
+      // Traps hide until you are close.
+      if (o.type === 'trap' && !sharpEyes() && Math.abs(o.x - world.px) + Math.abs(o.y - world.py) > 2) continue;
       if (o.x < x0 - 1 || o.y < y0 - 1 || o.x > x0 + cols + 1 || o.y > y0 + rows + 1) continue;
       const sx = sxOf(o.x), sy = syOf(o.y);
       if (o.type === 'desk') glow(sx + TILE * 0.8, sy + TILE * 0.1, TILE * (1.4 + flicker * 0.1), '#ffcf7a55');
@@ -144,7 +153,13 @@ export function createExploreView(canvas, world, { onTile, onHover, playerSwap }
         ctx.fillRect(cx, cy - px * 2, px, px * 5);
       }
       const lift = (o.type === 'elite' || o.type === 'boss' || o.type === 'event') ? bobbing : 0;
-      blit(sprite(name, { swap }), sx, sy + lift);
+      blit(sprite(name, o.type === 'crack' ? { tiles } : { swap }), sx, sy + lift);
+      if (o.type === 'crack' && sharpEyes() && !reduceMotion()) {
+        const phase = (Math.sin(t / 300) + 1) / 2, px = TILE / PX;
+        ctx.fillStyle = `rgba(255, 241, 184, ${0.3 + phase * 0.6})`;
+        ctx.fillRect(sx + TILE * 0.5 - px, sy + TILE * 0.45, px * 3, px);
+        ctx.fillRect(sx + TILE * 0.5, sy + TILE * 0.45 - px, px, px * 3);
+      }
       // A guardian stands on the stairs until it is beaten.
       if (o.type === 'exit' && o.guard) blit(sprite(o.guard), sx, sy + bobbing);
     }
@@ -213,7 +228,19 @@ export function createExploreView(canvas, world, { onTile, onHover, playerSwap }
     const rect = canvas.getBoundingClientRect();
     return [Math.floor(camX + (e.clientX - rect.left) / TILE), Math.floor(camY + (e.clientY - rect.top) / TILE)];
   };
-  canvas.addEventListener('click', e => onTile(...toTile(e)));
+  // A swipe walks; a tap goes to the tile. The click after a swipe is ignored.
+  let touchFrom = null, swiped = 0;
+  canvas.addEventListener('touchstart', e => { const t = e.touches[0]; touchFrom = [t.clientX, t.clientY]; }, { passive: true });
+  canvas.addEventListener('touchend', e => {
+    if (!touchFrom || !onSwipe) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchFrom[0], dy = t.clientY - touchFrom[1];
+    touchFrom = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 28) return;
+    swiped = performance.now();
+    if (Math.abs(dx) > Math.abs(dy)) onSwipe(Math.sign(dx), 0); else onSwipe(0, Math.sign(dy));
+  });
+  canvas.addEventListener('click', e => { if (performance.now() - swiped > 400) onTile(...toTile(e)); });
   canvas.addEventListener('mousemove', e => onHover?.(...toTile(e), e));
   canvas.addEventListener('mouseleave', () => onHover?.(null));
 

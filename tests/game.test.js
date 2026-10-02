@@ -829,8 +829,8 @@ test('depths stack their rules', async () => {
   assert.equal(hard.oilMax, 85);
   assert.ok(hard.deck.some(k => k.starter === 'blot'));
   assert.ok(!easy.deck.some(k => k.starter === 'blot'));
-  assert.deepEqual(fightOptions(easy, 'random'), { hpMult: 1, strength: 0 });
-  assert.deepEqual(fightOptions(hard, 'random'), { hpMult: 1, strength: 1 });
+  assert.deepEqual(fightOptions(easy, 'random'), { hpMult: 1, strength: 0, paperWear: 0 });
+  assert.deepEqual(fightOptions(hard, 'random'), { hpMult: 1, strength: 1, paperWear: 0 });
   assert.equal(fightOptions(hard, 'elite').hpMult, 1.1);
   assert.equal(fightOptions(hard, 'guardian').strength, 2);
   assert.equal(priceFor(hard, 20), 25);
@@ -861,4 +861,137 @@ test('winning opens the next depth, once', async () => {
   meta.depthUnlocked = 8;
   assert.equal(recordRun(meta, { won: true, depth: 3, level: 8, maxLevel: 8 }, store).unlocked, null);
   assert.equal(meta.bestDepth, 8);
+});
+
+test('pale ink repeats the last card you cast', () => {
+  const run = createRun(70);
+  const pale = craftCard({ colors: ['grey'], inkMat: 'silver', cardMat: 'wood' });
+  assert.deepEqual(pale.effects, [{ type: 'mimic', amount: 50 }]);
+  assert.equal(craftCard({ colors: ['grey'], inkMat: 'blood', cardMat: 'stone' }).effects[0].amount, 150);
+  const c = createCombat(run, ['grimoire'], () => 0.5);
+  c.hand = [{ ...run.deck[0], uid: 's1' }, pale];
+  c.player.energy = 5;
+  const hp = c.enemies[0].hp;
+  playCard(c, 's1', 0);             // Strike: 5
+  playCard(c, pale.uid, 0);         // repeats it at 50%: 3
+  assert.equal(hp - c.enemies[0].hp, 8);
+  assert.equal(c.lastCast.name, 'Strike');
+  const second = craftCard({ colors: ['grey'], inkMat: 'silver', cardMat: 'silver' });
+  assert.equal(second.recipeId, 'secondhand');
+});
+
+test('bleed hurts enemies that attack; frail cuts block', () => {
+  const run = createRun(71);
+  const c = createCombat(run, ['hound'], () => 0.5);
+  const e = c.enemies[0];
+  e.bleed = 3;
+  const hp = e.hp;
+  c.hand = []; c.player.block = 100;
+  endTurn(c);
+  assert.ok(e.hp < hp, 'it bled when it attacked');
+  c.player.frail = 2;
+  c.player.block = 0;
+  c.hand = [{ ...run.deck.find(k => k.starter === 'guard'), uid: 'g1' }];
+  c.player.energy = 3;
+  playCard(c, 'g1', 0);
+  assert.equal(c.player.block, 3); // 5 x 0.75, rounded down
+});
+
+test('serrated and withering apply their statuses, and pale reactions exist', async () => {
+  const { REACTIONS, INK_COLORS } = await import('../js/data.js');
+  for (const k of Object.keys(INK_COLORS)) {
+    if (k !== 'grey') assert.ok(REACTIONS[[k, 'grey'].sort().join('+')], `grey+${k}`);
+  }
+  const run = createRun(72);
+  const card = craftCard({ colors: ['red'], inkMat: 'silver', cardMat: 'gold', enchants: ['serrated', 'withering'] });
+  const c = createCombat(run, ['grimoire'], () => 0.5);
+  c.hand = [card]; c.player.energy = 3;
+  playCard(c, card.uid, 0);
+  assert.equal(c.enemies[0].bleed, 2);
+  assert.equal(c.enemies[0].frail, 2);
+});
+
+test('the Grimoire unlocks enchantments and relics for later runs', async () => {
+  const { isLocked, unlocksBetween, relicChoices, rollRewards } = await import('../js/run.js');
+  const fresh = createRun(73);
+  assert.ok(isLocked(fresh, 'enchant', 'serrated'));
+  assert.ok(isLocked(fresh, 'relic', 'cartographer'));
+  assert.ok(!relicChoices(fresh, 30).some(id => ['cartographer', 'leechjar', 'scale'].includes(id)));
+  for (let i = 0; i < 40; i++) {
+    assert.ok(!rollRewards(['hound'], { run: fresh }, Math.random).items.includes('ench_serrated'));
+  }
+  const learned = createRun(73, RECIPES.slice(0, 6).map(r => r.id));
+  assert.ok(!isLocked(learned, 'enchant', 'serrated'));
+  assert.ok(!isLocked(learned, 'relic', 'leechjar'));
+  assert.ok(isLocked(learned, 'relic', 'paleglass'));
+  assert.deepEqual(unlocksBetween(1, 4).map(u => u.id), ['serrated', 'withering']);
+});
+
+test('delves hide cracked walls, traps and trapdoors', async () => {
+  const { springTrap, enterLower } = await import('../js/run.js');
+  let secrets = 0, hatches = 0;
+  for (let seed = 1; seed <= 60; seed++) {
+    const w = generateRegion(seed % 4, seed);
+    assert.ok(w.objects.filter(o => o.type === 'trap').length >= 1);
+    if (w.secret) {
+      secrets++;
+      const crack = w.objects.find(o => o.type === 'crack');
+      assert.ok(crack && isFloor(w, crack.x, crack.y));
+      // The hidden room is only reachable through the crack.
+      w.seen.fill(1);
+      assert.equal(findPath(w, w.secret.x, w.secret.y), null);
+      crack.gone = true;
+      assert.ok(findPath(w, w.secret.x, w.secret.y));
+    }
+    if (w.objects.some(o => o.type === 'hatch')) hatches++;
+  }
+  assert.ok(secrets > 10 && hatches > 2, `${secrets} secrets, ${hatches} trapdoors`);
+  const run = createRun(74);
+  intoDelve(run);
+  const hp = run.hp;
+  springTrap(run, { trap: 'spikes' });
+  assert.equal(run.hp, hp - 5);
+  assert.ok(enterLower(run).ok);
+  assert.ok(run.world.lower);
+  assert.ok(!run.world.objects.some(o => o.type === 'up' || o.type === 'desk'));
+  assert.ok(enterLower(run).error);
+});
+
+test("the Rag Merchant's favors pay out, and the last one tells the truth", async () => {
+  const { meetMerchant, deliverFavor, canDeliver, priceFor } = await import('../js/run.js');
+  const { MERCHANT } = await import('../js/data.js');
+  const run = createRun(75);
+  const first = meetMerchant(run, () => 0);
+  assert.equal(first.line, MERCHANT.lines[0]);
+  assert.ok(first.favor);
+  assert.ok(!canDeliver(run));
+  for (let i = 0; i < 3; i++) {
+    const f = MERCHANT.favors[run.merchant.favor];
+    run.inventory[f.item] = (run.inventory[f.item] || 0) + f.n;
+    const r = deliverFavor(run, () => 0);
+    assert.equal(r.text, MERCHANT.done[i]);
+    if (i < 2) meetMerchant(run, () => 0);
+  }
+  assert.ok(run.relics.includes('scale'));
+  assert.equal(priceFor(run, 20), 15);
+  assert.equal(meetMerchant(run).favor, null);
+});
+
+test('Vell remarks on what you have written', async () => {
+  const { vellRemark } = await import('../js/events.js');
+  const run = createRun(76);
+  assert.match(vellRemark(run), /haven't written anything/);
+  Object.assign(run.inventory, { color_red: 1, mat_paper: 1 });
+  craftIntoDeck(run, { colors: ['red'], inkMat: 'charcoal', cardMat: 'paper' });
+  assert.match(vellRemark(run), /Paper/);
+  run.deck.at(-1).customName = 'Kettle';
+  assert.match(vellRemark(run), /Kettle/);
+});
+
+test('every effect type has card text', async () => {
+  const { describeCard } = await import('../js/crafting.js');
+  for (const r of RECIPES) assert.ok(describeCard(craftCard({ ...r.match, enchants: r.match.enchants || [] }, { corruption: 99 })).every(Boolean), r.id);
+  for (const c of ['red', 'white', 'blue', 'green', 'black', 'grey']) {
+    assert.ok(describeCard(craftCard({ colors: [c], inkMat: 'silver', cardMat: 'gold', enchants: ['serrated', 'withering'] })).length >= 3, c);
+  }
 });

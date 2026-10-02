@@ -22,6 +22,11 @@ Opening `index.html` straight from disk won't work, because browsers block JavaS
 - **Delve conditions** shown on the map: Flooded, Lightless, Ossuary, Collapsing and Hallowed ground each change what the delve is like.
 - **Pests** that go after your cards: Paper Moths eat paper, Ink Leeches smudge cheap pages, Rust Wraiths tarnish silver and gold.
 - **Deck viewer:** tap Deck in the top bar, or press V, from anywhere in a run.
+- **Pale ink**, a sixth color that repeats your last card, plus **Bleed** and **Frail**.
+- **Delve secrets:** cracked walls with hidden rooms, traps in the corridors, and trapdoors to a richer level beneath.
+- **Unlocks:** new enchantments and relics as your Grimoire fills, and a **daily descent** with the same seed for everyone.
+- **The Rag Merchant's story:** his ledger of favors, and what he knows about Vell. Vell also remarks on what you have written.
+- **Touch:** swipe to walk in delves; press and hold (or right-click) a card for its details.
 - **Scriptoria:** craft, then choose to rest or refill your lantern.
 - **A storyline:** Sister Vell, the Inkbinder who went down before you. How you treat her decides whether she stands with you against the Grimoire, or against you.
 - **Act guardians:** one of two per act (the Bell Warden or the Hollow Bishop, the Pale Scrivener or the Leviathan Index, the Ossuary Saint or the Bone Cantor), and finally the Unbound Grimoire. At half health each one enters a second phase.

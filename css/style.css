@@ -276,7 +276,7 @@ button.card:hover:not(.disabled) { transform: translateY(-8px); box-shadow: 0 14
 /* ---------- explore ---------- */
 .explore { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
 .mapwrap { position: relative; min-width: 0; display: flex; justify-content: center; background: #07050a; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
-#map { display: block; cursor: pointer; image-rendering: pixelated; touch-action: manipulation; }
+#map { display: block; cursor: pointer; image-rendering: pixelated; touch-action: none; }
 .hover { position: absolute; pointer-events: none; padding: 2px 8px; background: #120e15ee; border: 1px solid var(--brass-dim); font-family: var(--f-label); font-size: .82rem; white-space: nowrap; }
 .side { display: grid; gap: 12px; min-width: 0; }
 .side h2 { font-size: 1.8rem; line-height: 1; }
@@ -612,3 +612,30 @@ button.linkish { background: none; border: none; color: var(--muted); text-decor
 .guardline { display: flex; gap: 10px; align-items: center; margin: 0; padding: 8px 10px; background: #1c0f12; border: 1px solid #6e1a16; border-radius: 4px; font-size: .9rem; color: var(--muted); }
 .guardline b { color: var(--text); font-weight: normal; font-family: var(--f-label); }
 .portrait.guardart { width: 40px; height: 40px; flex: none; }
+
+/* ---------- bleed, frail, secrets, merchant, story, card details ---------- */
+.chip.bleed { color: #ff8f86; border-color: #6e1a16; }
+.chip.frail { color: #c9c1b0; border-color: #4a4050; }
+.ledger { display: grid; gap: 8px; }
+.merchline { display: flex; gap: 12px; align-items: center; margin: 0; font-style: italic; }
+.portrait.merchart { width: 48px; height: 48px; flex: none; }
+.favor { margin: 0; }
+.favor small { color: var(--muted); }
+.ledger button { justify-self: start; }
+.remark { max-width: 560px; margin: 0 auto 14px; padding: 8px 12px; border-left: 3px solid #8e5fb0; background: #2a1f33; font-style: italic; color: var(--text); }
+.unlocklist { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 4px; }
+.unlocklist li { display: grid; grid-template-columns: 90px 1fr; gap: 10px; padding: 6px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; color: var(--muted); font-size: .9rem; }
+.unlocklist li.got { color: var(--text); border-color: var(--brass-dim); }
+.unlocklist b { font-family: var(--f-label); font-weight: normal; color: var(--brass); }
+.cardinfo .deckov-panel { width: min(720px, 100%); }
+.infogrid { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start; margin-bottom: 14px; }
+.infocard .card { transform: scale(1.15); transform-origin: top left; margin: 0 24px 34px 0; }
+.infogrid dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: .92rem; }
+.infogrid dt { font-family: var(--f-label); color: var(--brass); }
+.infogrid dd { margin: 0; color: var(--text); }
+.cardinfo .deckov-close { display: block; margin-left: auto; }
+@media (max-width: 560px) {
+  .infogrid { grid-template-columns: 1fr; justify-items: center; }
+  .infocard .card { transform: none; margin: 0; }
+}
+.card { -webkit-touch-callout: none; user-select: none; }

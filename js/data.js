@@ -6,6 +6,8 @@ export const INK_COLORS = {
   blue:  { name: 'Drowned Ink', short: 'Blue',  noun: 'Insight', effect: 'draw',   base: 2, hue: '#3a6ea5', desc: 'Draws cards' },
   green: { name: 'Moss Ink',    short: 'Green', noun: 'Mending', effect: 'heal',   base: 4, hue: '#4f8a4b', desc: 'Heals you' },
   black: { name: 'Grave Ink',   short: 'Black', noun: 'Blight',  effect: 'poison', base: 3, hue: '#6b4f7a', desc: 'Applies Poison' },
+  // Pale ink only remembers: it repeats your last card at a percentage of its power.
+  grey:  { name: 'Pale Ink',    short: 'Pale',  noun: 'Mimicry', effect: 'mimic',  base: 50, hue: '#b8b2c8', desc: 'Repeats your last card' },
 };
 
 // One rule for mixing: a card can carry a second ink for +1 mana. Both effects stay at
@@ -25,6 +27,11 @@ export const REACTIONS = {
   'green+white': { name: 'Sanctuary', desc: 'Heal 4.', effects: [{ type: 'heal', amount: 4 }] },
   'black+white': { name: 'Shroud',    desc: "Strip the target's Block.", effects: [{ type: 'strip' }] },
   'black+green': { name: 'Rot',       desc: "Spread the target's Poison to every other enemy.", effects: [{ type: 'spread' }] },
+  'grey+red':    { name: 'Bloodletting', desc: 'Apply 2 Bleed to the target.', effects: [{ type: 'bleed', amount: 2 }] },
+  'grey+white':  { name: 'Mirror Ward',  desc: 'Gain 4 Block.', effects: [{ type: 'block', amount: 4 }] },
+  'blue+grey':   { name: 'Recall',       desc: 'Draw 1 card.', effects: [{ type: 'draw', amount: 1 }] },
+  'green+grey':  { name: 'Renewal',      desc: 'Heal 3.', effects: [{ type: 'heal', amount: 3 }] },
+  'black+grey':  { name: 'Unravel',      desc: 'Apply 2 Frail to the target.', effects: [{ type: 'frail', amount: 2 }] },
 };
 
 // Relics: passive trinkets. Elites offer a choice of three; reliquaries and the
@@ -40,7 +47,16 @@ export const RELICS = {
   locket:      { name: 'Heart Locket',        desc: '+10 max HP.' },
   dice:        { name: 'Bone Dice',           desc: 'Monsters drop an extra item a third of the time.' },
   prism:       { name: 'Ink Prism',           desc: 'Ink reactions are twice as strong.' },
+  // Unlocked by filling the Grimoire (see UNLOCKS).
+  cartographer: { name: "Cartographer's Chalk", desc: 'You always see traps, and cracked walls glint.' },
+  leechjar:    { name: 'Leech Jar',           desc: 'Bleed you apply is 1 higher.' },
+  paleglass:   { name: 'Pale Glass',          desc: 'Pale ink repeats at 25% more power.' },
+  oilskin:     { name: 'Oilskin Satchel',     desc: 'Flooded delves do not wear your paper faster.' },
+  // The Rag Merchant's last favor.
+  scale:       { name: "The Merchant's Scale", desc: 'Merchants charge you 25% less.' },
 };
+// Relics that never turn up at random.
+export const SPECIAL_RELICS = new Set(['scale']);
 export const RELIC_PRICE = 70;
 export const CHEST_RELIC_CHANCE = 0.15;
 
@@ -73,7 +89,14 @@ export const ENCHANTMENTS = {
   hungering: { name: 'Hungering', part: 'Ghoul Tongue',     desc: 'Gets +2 stronger each time you cast it in a fight.' },
   piercing:  { name: 'Piercing',  part: "Weaver's Needle",  desc: 'Damage ignores Block.' },
   hallowed:  { name: 'Hallowed',  part: "Saint's Knucklebone", desc: 'Also gain 4 Block when cast.' },
+  // Unlocked by filling the Grimoire (see UNLOCKS).
+  serrated:  { name: 'Serrated',  part: 'Rusted Hook',      desc: 'Applies 2 Bleed when it deals damage.' },
+  withering: { name: 'Withering', part: 'Withered Hand',    desc: 'Applies 2 Frail to the target.' },
 };
+
+// Statuses. Bleed: an enemy loses HP equal to its Bleed each time it attacks, then
+// Bleed drops by 1 at the end of its turn. Frail: Block gained is cut by a quarter.
+export const FRAIL_MULT = 0.75;
 
 // Raw materials are what you scavenge in the world. Refine them at a writing desk.
 export const RAW_MATERIALS = {
@@ -91,6 +114,7 @@ export const RAW_MATERIALS = {
   heart:     { name: 'Heartblood',   node: null,                color: '#8d1f1a', rarity: 'rare' },
   ichor:     { name: 'Ichor',        node: null,                color: '#7a8a2a', rarity: 'rare' },
   wisp:      { name: 'Ghostlight Wisp', node: null,             color: '#9fd8e0', rarity: 'uncommon' },
+  mirror:    { name: 'Mirror Shard', node: 'Shattered mirror',  color: '#b8b2c8', rarity: 'uncommon' },
 };
 
 // What you pick up is ready to use. Most finds turn straight into ingredients.
@@ -107,6 +131,7 @@ export const PICKUP = {
   raw_heart: { ink_blood: 2 },
   raw_ichor: { ink_ichor: 1 },
   raw_wisp: { ink_ghostlight: 1 },
+  raw_mirror: { color_grey: 1 },
 };
 
 // Other ways to pay for a blueprint slot, tried after the ready-made item.
@@ -249,6 +274,13 @@ export const RECIPES = [
     flavor: 'Every Inkbinder who wore it heard the same voice.',
   },
   {
+    id: 'secondhand', name: 'The Second Hand',
+    match: { colors: ['grey'], inkMat: 'silver', cardMat: 'silver' },
+    effects: [{ type: 'mimic', amount: 100 }, { type: 'draw', amount: 1 }],
+    hint: 'Pale ink, silver on silver, that remembers everything.',
+    flavor: 'Whatever you just said, it says again.',
+  },
+  {
     id: 'emberrite', name: 'Ember Rite',
     match: { colors: ['red'], inkMat: 'gold', cardMat: 'gold' },
     effects: [{ type: 'damageAll', amount: 9 }],
@@ -307,7 +339,7 @@ export const ENEMIES = {
       { actions: [{ type: 'buff', status: 'strength', amount: 2 }, { type: 'block', amount: 4 }] },
       { actions: [{ type: 'attack', amount: 9 }] },
     ],
-    drops: ['ench_leech', 'raw_ash', 'raw_bloodroot', 'raw_timber', 'ench_volatile'],
+    drops: ['ench_leech', 'raw_ash', 'raw_bloodroot', 'raw_timber', 'ench_volatile', 'ench_serrated'],
   },
   ghoul: {
     name: 'Candle Ghoul', hp: 22,
@@ -393,8 +425,9 @@ export const ENEMIES = {
     moves: [
       { actions: [{ type: 'debuff', status: 'weak', amount: 2 }, { type: 'attack', amount: 3 }] },
       { actions: [{ type: 'attack', amount: 7 }] },
+      { actions: [{ type: 'debuff', status: 'frail', amount: 2 }, { type: 'attack', amount: 4 }] },
     ],
-    drops: ['raw_bone', 'raw_ash', 'ench_echo', 'raw_silver', 'raw_wisp', 'raw_wisp'],
+    drops: ['raw_bone', 'raw_ash', 'ench_echo', 'raw_silver', 'raw_wisp', 'raw_wisp', 'ench_withering', 'raw_mirror'],
   },
   boneweaver: {
     name: 'Bone Weaver', hp: 26,
@@ -575,7 +608,7 @@ export const REGIONS = [
   {
     name: 'The Chapel Ruins',
     intro: 'Pews split for firewood. Bones in every niche. Somewhere below, a bell.',
-    raws: { ash: 3, bone: 3, rags: 2, timber: 2, gravesoil: 2, bloodroot: 2, moss: 1 },
+    raws: { ash: 3, bone: 3, rags: 2, timber: 2, gravesoil: 2, bloodroot: 2, moss: 1, mirror: 1 },
     encounters: [['acolyte'], ['gravemoth', 'gravemoth'], ['gravemoth'], ['acolyte', 'gravemoth'], ['papermoth'], ['papermoth', 'gravemoth']],
     elites: ['gravedigger'], guardians: ['warden', 'bishop'], hpMult: 1,
     tiles: { 1: '#2b2430', 2: '#352c3c', 3: '#1d1822', 4: '#4f7a45', 5: '#4a3f50', 6: '#6b5a74', 7: '#2a2230', 8: '#1f1a24', 9: '#231c28' },
@@ -583,7 +616,7 @@ export const REGIONS = [
   {
     name: 'The Drowned Archive',
     intro: 'The river took the library a century ago. The scribes never stopped working.',
-    raws: { kelp: 3, moss: 2, slate: 2, silver: 2, rags: 2, bloodroot: 1, bone: 1 },
+    raws: { kelp: 3, moss: 2, slate: 2, silver: 2, rags: 2, bloodroot: 1, bone: 1, mirror: 1 },
     encounters: [['drowned'], ['drowned', 'gravemoth'], ['hound'], ['ghoul'], ['inkleech'], ['inkleech', 'papermoth']],
     elites: ['abbot'], guardians: ['scrivener', 'index'], hpMult: 1.1,
     tiles: { 1: '#1f2a30', 2: '#27363d', 3: '#141c21', 4: '#3f7a6f', 5: '#3a4d56', 6: '#557582', 7: '#1f2c33', 8: '#162027', 9: '#18242a' },
@@ -591,7 +624,7 @@ export const REGIONS = [
   {
     name: 'The Catacombs',
     intro: 'The dead here were buried standing up, facing the stair. They are still waiting for someone to come down it.',
-    raws: { bone: 3, gravesoil: 3, ash: 2, slate: 2, silver: 1, moss: 1, timber: 1 },
+    raws: { bone: 3, gravesoil: 3, ash: 2, slate: 2, silver: 1, moss: 1, timber: 1, mirror: 2 },
     encounters: [['wraith'], ['boneweaver'], ['wraith', 'acolyte'], ['boneweaver', 'gravemoth'], ['rustwraith'], ['rustwraith', 'inkleech']],
     elites: ['choirmaster'], guardians: ['saint', 'cantor'], hpMult: 1.2,
     tiles: { 1: '#2a2826', 2: '#34312d', 3: '#1a1816', 4: '#6b6a4a', 5: '#4d4944', 6: '#79736a', 7: '#2a2724', 8: '#1e1c1a', 9: '#22201e' },
@@ -599,7 +632,7 @@ export const REGIONS = [
   {
     name: 'The Last Library',
     intro: 'Every book here was written by an Inkbinder. Most of them are still screaming.',
-    raws: { gold: 2, silver: 2, bloodroot: 2, gravesoil: 2, bone: 1, slate: 1, kelp: 1 },
+    raws: { gold: 2, silver: 2, bloodroot: 2, gravesoil: 2, bone: 1, slate: 1, kelp: 1, mirror: 2 },
     encounters: [['hound', 'ghoul'], ['inkling', 'inkling'], ['ghoul', 'gravemoth', 'gravemoth'], ['inkling', 'wraith'], ['boneweaver', 'inkling'], ['rustwraith', 'papermoth'], ['inkleech', 'inkling']],
     elites: ['gravedigger', 'abbot', 'choirmaster'], guardians: null, boss: 'grimoire', hpMult: 1.3,
     tiles: { 1: '#2e2320', 2: '#392b26', 3: '#1e1614', 4: '#8a6a2a', 5: '#523a2e', 6: '#7a5840', 7: '#2e201a', 8: '#221814', 9: '#241915' },
@@ -611,6 +644,10 @@ export const DELVE = {
   plain: { rooms: 7, nodes: 8, chests: 1 },
   haunted: { rooms: 8, nodes: 11, chests: 2 },
   eventChance: 0.35,
+  secretChance: 0.4,  // a cracked wall hiding a small room
+  traps: [1, 3],      // traps per delve
+  lowerChance: 0.15,  // a trapdoor to a lower level
+  lower: { rooms: 6, nodes: 9, chests: 2, raws: { silver: 4, gold: 3, slate: 3, mirror: 2 }, encounterMult: 1.5 },
   leaveDread: 0.5, // Dread is multiplied by this when you climb out
 };
 
@@ -801,6 +838,47 @@ export const STORY = {
 };
 export const STORY_ALLY_TRUST = 2;
 
+// What filling the Grimoire unlocks, for the runs after. `at` counts known spells.
+export const UNLOCKS = [
+  { at: 1, kind: 'relic', id: 'cartographer' },
+  { at: 2, kind: 'enchant', id: 'serrated' },
+  { at: 4, kind: 'enchant', id: 'withering' },
+  { at: 6, kind: 'relic', id: 'leechjar' },
+  { at: 8, kind: 'relic', id: 'paleglass' },
+  { at: 10, kind: 'relic', id: 'oilskin' },
+];
+
+// Traps hidden in delve corridors. You only see one when you are close.
+export const TRAPS = {
+  spikes: { name: 'Spike plate', text: 'Spikes punch up through the floor', hp: 5 },
+  gas:    { name: 'Grave gas', text: 'A grey gas hisses up and fills your lungs', hp: 3, dread: 15 },
+  spill:  { name: 'Oil snare', text: 'A wire jerks your lantern sideways and oil spills', oil: 12 },
+};
+
+// The Rag Merchant's storyline: a line each time you meet, and up to three favors.
+export const MERCHANT = {
+  lines: [
+    '"New face. Fewer every year. Your sort always buys ink first and bandages second."',
+    '"You again. The Sister bought from me too, you know. Ink, mostly. Then more ink."',
+    '"I knew her before she was Sister anything. She owes me for six bottles."',
+    '"I don\'t go down past the Catacombs. Something down there pays better than I do."',
+    '"Still breathing. Good for business."',
+  ],
+  favors: [
+    { item: 'ench_leech', n: 1, ask: '"Bring me a hound\'s fang. I have a customer with peculiar teeth."' },
+    { item: 'ench_echo', n: 1, ask: '"An acolyte\'s bell. Don\'t ask what for."' },
+    { item: 'raw_slate', n: 2, ask: '"Two slates. Good ones. I am building something."' },
+    { item: 'color_green', n: 2, ask: '"Two bottles of moss ink. My hands are not what they were."' },
+    { item: 'ench_hungering', n: 1, ask: '"A ghoul\'s tongue. Fresh, if you can manage it."' },
+    { item: 'raw_silver', n: 2, ask: '"Two lumps of silver ore. Prices are going up."' },
+  ],
+  done: [
+    'He weighs it in his palm and nods. "Fair. Here, take this." (+40 gold, a Pristine Essence)',
+    'He wraps it in three layers of rag. "You keep your word. Rare, down here." He gives you something from under the counter.',
+    'He tucks it away and, for once, does not count it. "I sold her the ink that hollowed her," he says. "Take this. Make it worth something."',
+  ],
+};
+
 // Depths: harder runs, unlocked one at a time by winning. Each level adds its rule
 // to all the ones below it.
 export const DEPTHS = [
@@ -845,9 +923,9 @@ export const VARIANTS = {
 // Tips for a first run. Each shows once, and the player can turn them all off.
 export const HINTS = {
   map: 'Choose where to go next. Delves are dungeons full of materials and wandering monsters. The guardian of the act waits at the top. Follow the lines.',
-  explore: 'Tap a tile or use WASD to walk. The writing desk is close by: that is where you craft. Scavenge the marked spots, then find the way out.',
+  explore: 'Tap a tile, swipe, or use WASD to walk. The writing desk is close by: that is where you craft. Scavenge the marked spots, then find the way out. Watch for cracked walls.',
   desk: 'Inscribe a card: pick a card material, an ink color and an ink material. A second ink costs 1 more mana. Monster parts add enchantments. If the ink stirs, you are one part away from a named spell.',
-  fight: 'You get 3 mana each turn, and enemies show what they will do next. Cast crafted cards of different inks back to back to set off reactions.',
+  fight: 'You get 3 mana each turn, and enemies show what they will do next. Cast crafted cards of different inks back to back to set off reactions. Press and hold a card (or right-click it) for its details.',
   lantern: 'Your lantern is running low and the dark is closing in. Burn a card for oil, or climb back to the surface from the stairs up.',
   corruption: 'Blood and ichor are corrupting you. At 5 you are Tainted, at 10 Forsaken. Rest at desks or pray at shrines to cleanse it.',
   guardian: 'Something guards the way out of this delve. Beat it and it leaves a relic. Craft before you face it.',

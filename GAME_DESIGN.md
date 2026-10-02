@@ -61,6 +61,9 @@ Every crafted card needs four components:
 | Blue | Draw cards | 1 card per 3 value (rounded) |
 | Green | Heal / Regen | 3 heal |
 | Black | Apply Curse (Weak / Poison) | 3 stacks |
+| Pale | Repeat your last card's damage, Block, draw, healing and Poison | 50% (scaled by ink and page) |
+
+> **Pale ink** comes from Mirror Shards (scavenged from shattered mirrors in every act, and in reliquaries). It never copies another Pale card, and the copy uses the earlier card's amounts as cast.
 > **A second ink:** any card can carry two ink colors. The second ink costs **+1 mana**; both effects stay at full strength, and the card sets off that pair's reaction (6.5) every time it is cast. Two-ink cards are named after their reaction (Ashen Brand, Silvered Storm).
 >
 > Cards always show their final numbers ("Deal 9 damage"). The multipliers below are for tuning, not for the player.
@@ -102,6 +105,10 @@ Enchantments are **monster parts**. You can only get one by killing (or finding)
 | Ghoul Tongue | Hungering | +2 power each time it's cast in the same fight | Candle Ghoul |
 | Weaver's Needle | Piercing | Damage ignores Block | Bone Weaver |
 | Saint's Knucklebone | Hallowed | Also gain 4 Block when cast | The Ossuary Saint |
+| Rusted Hook *(unlock)* | Serrated | Applies 2 Bleed when it deals damage | Ashen Hound, reliquaries |
+| Withered Hand *(unlock)* | Withering | Applies 2 Frail to the target | Choir Wraith, reliquaries |
+
+**Statuses.** *Bleed*: an enemy loses HP equal to its Bleed each time it attacks (each hit of a multi-attack), then Bleed drops by 1 at the end of its turn. It punishes monsters that hit often. *Frail*: Block gained is cut by a quarter. Choir Wraiths can make **you** Frail.
 
 ---
 
@@ -212,6 +219,7 @@ Some exact combinations make **named spells** with unique effects beyond the for
 | White + Silver ink + Silver card + Hallowed | **Saint's Litany:** Gain 12 Block, heal 5 |
 | Black + Blood + Wood + Piercing | **Needlestorm:** Deal 6 twice, apply 3 Poison (ignores Block) |
 | Blue + White + Charcoal + Paper | **Drowned Hymn:** Draw 2, gain 5 Block |
+| Pale + Silver ink + Silver card | **The Second Hand:** Repeat your last card at 100%, draw 1 |
 | Red + Gold ink + Gold card | **Ember Rite:** Deal 9 to ALL enemies |
 
 - No recipe needs more than **four parts** (counting each ink color, the ink material, the card material and each enchantment).
@@ -238,6 +246,11 @@ Casting an **inscribed** card right after one of a different ink sets off the re
 | Green + White | Sanctuary | Heal 4 |
 | White + Black | Shroud | Strip the target's Block |
 | Green + Black | Rot | Spread the target's Poison to every other enemy |
+| Pale + Red | Bloodletting | Apply 2 Bleed |
+| Pale + White | Mirror Ward | Gain 4 Block |
+| Pale + Blue | Recall | Draw 1 card |
+| Pale + Green | Renewal | Heal 3 |
+| Pale + Black | Unravel | Apply 2 Frail |
 
 This makes the order you cast in matter, and rewards crafting cards in inks that chain together.
 
@@ -302,6 +315,11 @@ Passive trinkets. Each elite offers a choice of 3. Reliquary boxes have a 15% ch
 | Heart Locket | +10 max HP |
 | Bone Dice | Monsters drop an extra item a third of the time |
 | Ink Prism | Ink reactions are twice as strong |
+| Cartographer's Chalk *(unlock)* | You always see traps, and cracked walls glint |
+| Leech Jar *(unlock)* | Bleed you apply is 1 higher |
+| Pale Glass *(unlock)* | Pale ink repeats at 25% more power |
+| Oilskin Satchel *(unlock)* | Flooded delves do not wear your paper faster |
+| The Merchant's Scale *(story)* | Merchants charge 25% less. Only from the Rag Merchant's last favor. |
 
 ---
 
@@ -387,6 +405,22 @@ Sister Vell is the Inkbinder who went down a year before you. You can meet her o
 
 Skipping her counts against her: nobody helped.
 
+**She notices what you write.** Each meeting (except with her hollowed self) adds one remark about your deck, the first that fits: a card you renamed, a named spell, blood or ichor cards, Pale ink, stone, an all-paper deck, or no crafted cards at all.
+
+### 8.3 The Rag Merchant
+Every merchant node is the same man. Each visit he has a new line (he knew Vell before she was a Sister), and he keeps a ledger of favors: he asks for one item at a time (a Hound Fang, an Acolyte's Bell, two Slate, two Moss Ink, a Ghoul Tongue, two Silver Ore), and you can hand it over at any later merchant.
+
+| Favor | Reward |
+|---|---|
+| First | 40 gold and a Pristine Essence |
+| Second | A random relic |
+| Third | The truth about Vell's ink, and **The Merchant's Scale** (25% off from then on) |
+
+### 8.4 Delve secrets
+- **Cracked walls** (40% of delves): a 3×3 room behind a crack, two tiles off an existing room. Bump the crack to break through. Inside: a reliquary with an extra item and a glinting double-yield spot of silver, gold, slate or mirror.
+- **Traps** (1–3 per delve, in corridors): hidden until you are within two tiles. Spike plate (−5 HP), grave gas (−3 HP, +15 Dread), oil snare (−12 oil). They never kill you outright.
+- **Trapdoors** (15% of delves, never hallowed or collapsing): climb down into **the level beneath**: 6 rooms, 9 scavenge spots weighted to silver, gold, slate and mirror, 2 reliquaries, twice the glinting spots, and encounters ×1.5. No desk, no way back up; leave by its own way out.
+
 ### 8.1 Writing desk actions
 | Tab | What you can do |
 |---|---|
@@ -409,6 +443,10 @@ Skipping her counts against her: nobody helped.
 - In fights, cast cards fly out of your hand, enemies shake and flash white when hit and sink when killed, damage and Block numbers rise, and a red vignette flashes when you are hurt.
 - Heavy hits shake the screen (bigger shakes for hits on you and for kills). Cast cards burst into sparks in their ink colors, and scavenging or opening a reliquary throws sparks on the map.
 - Everything respects the reduced-motion setting.
+
+### 9.5 Phone and touch
+- **Swipe** in a delve to walk straight that way (up to 8 tiles, stopping at anything worth a look). A tap still walks to a tile.
+- **Press and hold** any card (or right-click it on a computer) for its details: page and ink, colors and the reactions it can set off, enchantments and where they come from, wear, casts and signature.
 
 ### 9.4 Deck viewer
 The Deck count in the top bar (or the V key) opens your whole deck from anywhere in a run. In a fight it shows your draw pile, discard pile and anything gone for the fight, sorted so it never reveals the draw order. Escape closes it.
@@ -434,6 +472,21 @@ All sound is synthesized in the browser (Web Audio), so there are no audio files
 | The Ash Monk | +3 Charcoal Ink, +2 Wood Cards, +2 Ash; 4 Block at the start of every fight; only 10 gold | Know 3 spells in the Grimoire |
 | The Gilded Heretic | 120 gold, a Gold Card and Gold Ink; a 70-oil lantern | Reach the Catacombs |
 - No permanent stat boosts, so each run stays fair.
+
+### 10.2 Unlocks
+Spells in your Grimoire unlock new things for later runs (shown on the Grimoire screen, announced on the end screen):
+
+| Spells known | Unlock |
+|---|---|
+| 1 | Cartographer's Chalk (relic) |
+| 2 | Rusted Hook: Serrated (enchantment) |
+| 4 | Withered Hand: Withering (enchantment) |
+| 6 | Leech Jar (relic) |
+| 8 | Pale Glass (relic) |
+| 10 | Oilskin Satchel (relic) |
+
+### 10.3 Daily descent
+A run with the same seed for everyone on a given UTC day: the standard Inkbinder at Depth 0. The title screen shows how today's went.
 
 ### 10.1 Depths
 Harder runs, unlocked one level at a time: winning at your highest open Depth opens the next. Choose the Depth on the title screen. Each level keeps every rule below it.
@@ -479,4 +532,5 @@ Decided: random encounters stay as they are (driven by Dread). Lantern oil is in
 11. ~~Simpler crafting: no refining, one rule for a second ink, recipe hints, four-part recipes, signatures and names~~ (done)
 12. ~~Delve conditions on the map, pests that go after your cards, a deck viewer~~ (done)
 13. ~~Depths and a guardian pool~~ (done)
-14. Next: playtesting feedback.
+14. ~~Pale ink, Bleed and Frail, delve secrets, unlocks, the daily descent, the Rag Merchant's story, Vell's remarks, swipe and press-and-hold~~ (done)
+15. Next: playtesting feedback.
