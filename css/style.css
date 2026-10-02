@@ -566,3 +566,37 @@ button.linkish { background: none; border: none; color: var(--muted); text-decor
 @media (prefers-reduced-motion: reduce) { .inkstir { animation: none; } }
 .deckcard .cardacts { width: 100%; max-width: var(--card-w); }
 .rename input { width: 0; }
+
+/* ---------- pests, delve conditions, deck viewer ---------- */
+.intent.pest { color: #e0a85c; border-color: #8a5a1a; }
+.cost.dear { background: #8a5a1a; color: #fff1b8; }
+.card.smudged { filter: grayscale(.7) brightness(.85); }
+.smudgetag { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%) rotate(-12deg); padding: 1px 8px; font-family: var(--f-label); font-size: .8rem; color: #e6dcc6; background: #2a2230dd; border: 1px solid #6b5a74; pointer-events: none; }
+.pest-banner { color: #e0a85c; }
+.cond { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; line-height: 1; font-family: system-ui, sans-serif; background: #120e15; border: 1px solid #6b5a74; color: var(--text); flex: none; }
+.ownode .cond { position: absolute; right: -6px; top: -6px; }
+.cond.c-flooded { color: #79a3d8; border-color: #3a6ea5; }
+.cond.c-lightless { color: #a4987f; border-color: #4a4050; background: #000; }
+.cond.c-ossuary { color: #e8e0cc; border-color: #8a7650; }
+.cond.c-collapsing { color: #e7837b; border-color: #6e1a16; }
+.cond.c-hallowed { color: #ffd27a; border-color: #a8813f; }
+.condlegend { list-style: none; margin: 0; padding: 12px; display: grid; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+.condlegend li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start; font-size: .82rem; color: var(--muted); }
+.condlegend b { display: block; color: var(--text); font-family: var(--f-label); font-weight: normal; }
+.condline { display: flex; gap: 8px; align-items: start; font-size: .9rem; color: var(--muted); padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+.condline b { color: var(--text); font-weight: normal; font-family: var(--f-label); }
+.deckbtn { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted #7d6334; text-underline-offset: 4px; }
+.deckbtn:hover, .deckbtn:focus-visible { color: var(--rare); }
+.deckov { position: fixed; inset: 0; z-index: 50; display: grid; place-items: start center; overflow-y: auto; padding: 24px 16px; }
+.deckov-back { position: fixed; inset: 0; background: #07050acc; }
+.deckov-panel { position: relative; width: min(1100px, 100%); background: var(--night); border: 1px solid var(--line); border-radius: 6px; padding: 16px 20px 24px; box-shadow: 0 20px 60px #000; }
+.deckov-panel .screen-head { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 16px; }
+.deckov-panel .screen-head p { grid-column: 1; margin: 0; }
+.deckov-close { grid-column: 2; grid-row: 1 / span 2; }
+@media (max-width: 560px) {
+  .deckov { padding: 12px 6px; }
+  .deckov-panel { padding: 12px 8px 16px; }
+  .deckov-panel .cards { justify-content: center; gap: 10px; padding: 6px 0; }
+  .cond { width: 16px; height: 16px; font-size: 10px; }
+}
+.ownode .cond { width: 20px; height: 20px; font-size: 12px; }

@@ -1,7 +1,7 @@
 import {
   ENEMIES, INGREDIENTS, PRICES, REGIONS, STARTER_DECK, STARTING_INVENTORY, PLAYER_START, PICKUP,
   CARD_MATERIALS, BENCH_REST_HEAL, RAW_MATERIALS, DESCEND_HEAL, LANTERN, RELICS, RELIC_PRICE, CHEST_RELIC_CHANCE,
-  VARIANTS, CORRUPTION, EVENTS, MAP, DELVE, CAMP, OIL_WARE,
+  VARIANTS, CORRUPTION, EVENTS, MAP, DELVE, CAMP, OIL_WARE, DELVE_CONDITIONS,
 } from './data.js';
 import { makeStarterCard, craftCard, validateBlueprint, salvageRoll, ensureUidAbove, applyWear, gainItem, spendPlan, applySignature } from './crafting.js';
 import { generateRegion, lightRadius, reveal } from './world.js';
@@ -145,10 +145,10 @@ function resolveNode(run, node, rng) {
     case 'delve':
     case 'haunted': {
       const elite = node.type === 'haunted' ? pickFrom(region.elites, rng) : null;
-      const world = generateRegion(run.regionIdx, seed, { elite, events: unseenEvents(run) });
+      const world = generateRegion(run.regionIdx, seed, { elite, events: unseenEvents(run), cond: node.cond });
       for (const o of world.objects) if (o.type === 'event') run.seenEvents.push(o.event);
       enterWorld(run, world);
-      return { type: 'delve', elite };
+      return { type: 'delve', elite, cond: node.cond || null };
     }
     case 'shop':
       node.stock = rollShop(rng, run);
@@ -178,9 +178,10 @@ function resolveNode(run, node, rng) {
 
 // Climb out of a delve and back onto the map. The open air eases your Dread.
 export function leaveDelve(run) {
+  const keep = DELVE_CONDITIONS[run.world?.cond]?.leaveDread ?? DELVE.leaveDread;
   run.world = null;
   const before = run.dread;
-  run.dread = Math.floor(run.dread * DELVE.leaveDread);
+  run.dread = Math.floor(run.dread * keep);
   return { eased: before - run.dread };
 }
 
@@ -340,6 +341,8 @@ const CHEST_LOOT = ['raw_silver', 'raw_slate', 'raw_gold', 'raw_heart', 'ench_ec
 export function openChest(run, chest, rng = Math.random) {
   const items = [pick(CHEST_LOOT, rng)];
   if (rng() < 0.5) items.push(pick(Object.keys(RAW_MATERIALS).filter(k => k !== 'heart').map(k => `raw_${k}`), rng));
+  const bonus = DELVE_CONDITIONS[run.world?.cond]?.chestBonus || 0; // lightless delves hide more
+  for (let i = 0; i < bonus; i++) items.push(pick(CHEST_LOOT, rng));
   const gold = 10 + Math.floor(rng() * 20);
   const got = items.flatMap(id => addItem(run, id));
   run.gold += gold;

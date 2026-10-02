@@ -10,7 +10,8 @@ export function shuffle(arr, rng = Math.random) {
 }
 
 // A fight. Mutates `run` (hp, maxHp, gold, deck, inventory) as things happen.
-export function createCombat(run, enemyKeys, rng = Math.random, { hpMult = 1 } = {}) {
+// paperWear: extra uses a paper card loses per cast (a flooded delve).
+export function createCombat(run, enemyKeys, rng = Math.random, { hpMult = 1, paperWear = 0 } = {}) {
   const c = {
     run, rng,
     enemies: enemyKeys.map(key => {
@@ -23,6 +24,10 @@ export function createCombat(run, enemyKeys, rng = Math.random, { hpMult = 1 } =
     drawPile: shuffle([...run.deck], rng),
     hand: [], discard: [], exhaust: [],
     swiftUsed: new Set(),
+    paperWear,
+    smudged: new Set(), // card uids an Ink Leech has drained: half strength this fight
+    tarnish: 0,         // turns left on which silver and gold cards cost 1 more
+    pestEvent: null,    // { text, n } for the most recent thing a pest did to your cards
     lastColors: null,    // ink colors of the last card cast this turn
     lastReaction: null,  // { key, name, n } for the most recent reaction
     reactionCount: 0,
@@ -140,10 +145,12 @@ function damagePlayer(c, enemy, amount) {
   else log(c, `You block ${enemy.name}.`);
 }
 
+export const isMetal = card => card.cardMat === 'silver' || card.cardMat === 'gold';
+
 export function effectiveCost(c, card) {
   if (c.player.nextFree) return 0;
   if (card.enchants.includes('swift') && !c.swiftUsed.has(card.uid)) return 0;
-  return card.cost;
+  return card.cost + (c.tarnish > 0 && isMetal(card) ? 1 : 0);
 }
 
 // Returns null if the card can be played, or a reason it can't.
@@ -184,10 +191,13 @@ export function playCard(c, cardUid, targetIdx = 0) {
     && (card.colors.includes('black') || card.inkMat === 'blood');
   const growth = (card.enchants.includes('hungering') ? 2 * (c.hunger[card.uid] || 0) : 0)
     + (tainted ? CORRUPTION.taintBonus : 0);
+  const smudge = c.smudged.has(card.uid) ? 0.5 : 1;
+  if (smudge < 1) log(c, `${card.name} is smudged and writes faintly.`);
   const apply = (scale) => {
     for (const e of card.effects) {
       const base = e.amount + (GROWS.has(e.type) ? growth : 0);
-      const n = scale === 1 ? base : Math.max(1, Math.round(base * scale));
+      const k = scale * (e.type === 'loseMaxHp' ? 1 : smudge);
+      const n = k === 1 ? base : Math.max(1, Math.round(base * k));
       switch (e.type) {
         case 'damage': {
           if (!target || target.hp <= 0) target = alive(c)[0];
@@ -253,16 +263,10 @@ export function playCard(c, cardUid, targetIdx = 0) {
   // Wear and tear.
   let broken = false;
   if (Number.isFinite(card.durability)) {
-    card.durability--;
+    card.durability -= 1 + (card.cardMat === 'paper' ? c.paperWear : 0);
     if (card.durability <= 0) {
       broken = true;
-      c.run.deck = c.run.deck.filter(k => k.uid !== card.uid);
-      log(c, `${card.name} crumbles to nothing.`);
-      if (c.rng() < 0.5) {
-        const part = salvageRoll(card, c.rng);
-        c.run.inventory[part] = (c.run.inventory[part] || 0) + 1;
-        c.salvaged = [...(c.salvaged || []), part];
-      }
+      breakCard(c, card);
     }
   }
   if (!broken) {
@@ -273,6 +277,52 @@ export function playCard(c, cardUid, targetIdx = 0) {
   if (c.run.hp <= 0) c.over = 'lost';
   else if (!alive(c).length) c.over = 'won';
   return null;
+}
+
+function breakCard(c, card) {
+  card.durability = 0;
+  c.run.deck = c.run.deck.filter(k => k.uid !== card.uid);
+  log(c, `${card.name} crumbles to nothing.`);
+  if (c.rng() < 0.5) {
+    const part = salvageRoll(card, c.rng);
+    c.run.inventory[part] = (c.run.inventory[part] || 0) + 1;
+    c.salvaged = [...(c.salvaged || []), part];
+  }
+}
+
+const pickFrom = (c, arr) => arr[Math.floor(c.rng() * arr.length)];
+const pest = (c, text, label) => { log(c, text); c.pestEvent = { text, label, n: (c.pestEvent?.n || 0) + 1 }; };
+
+// What pests do to your cards. Your hand is already discarded when enemies act,
+// so they go after the cards in your draw and discard piles.
+function pestAction(c, e, type) {
+  const piles = [...c.drawPile, ...c.discard];
+  switch (type) {
+    case 'devour': {
+      const pool = piles.filter(k => k.cardMat === 'paper');
+      if (!pool.length) { log(c, `${e.name} finds no paper to eat.`); return; }
+      const card = pickFrom(c, pool);
+      c.drawPile = c.drawPile.filter(k => k !== card);
+      c.discard = c.discard.filter(k => k !== card);
+      card.durability--;
+      if (card.durability <= 0) { pest(c, `${e.name} eats ${card.name} whole.`, `${card.name} devoured`); breakCard(c, card); }
+      else { c.exhaust.push(card); pest(c, `${e.name} eats into ${card.name}. It is gone for this fight, and worn.`, `${card.name} eaten`); }
+      return;
+    }
+    case 'smudge': {
+      const pool = [...piles, ...c.hand].filter(k => k.crafted && (k.cardMat === 'paper' || k.cardMat === 'wood') && !c.smudged.has(k.uid));
+      if (!pool.length) { log(c, `${e.name} finds no cheap pages to drink from.`); return; }
+      const card = pickFrom(c, pool);
+      c.smudged.add(card.uid);
+      pest(c, `${e.name} drinks the ink from ${card.name}. It is at half strength for this fight.`, `${card.name} smudged`);
+      return;
+    }
+    case 'tarnish': {
+      if (!c.run.deck.some(isMetal)) { log(c, `${e.name} finds no silver or gold to tarnish.`); return; }
+      c.tarnish = 1;
+      pest(c, `${e.name} breathes on your silver and gold. They cost 1 more next turn.`, 'Silver and gold tarnished');
+    }
+  }
 }
 
 function react(c, key, target) {
@@ -320,6 +370,7 @@ export function endTurn(c) {
   c.discard.push(...c.hand.filter(k => !k.enchants.includes('bound')));
   c.hand = kept;
   if (c.player.weak > 0) c.player.weak--;
+  if (c.tarnish > 0) c.tarnish--;
 
   for (const e of alive(c)) {
     e.block = 0;
@@ -342,6 +393,7 @@ export function endTurn(c) {
         case 'block': e.block += a.amount; break;
         case 'buff': e[a.status] += a.amount; break;
         case 'debuff': c.player[a.status] += a.amount; break;
+        case 'devour': case 'smudge': case 'tarnish': pestAction(c, e, a.type); break;
       }
     }
     if (e.weak > 0) e.weak--;

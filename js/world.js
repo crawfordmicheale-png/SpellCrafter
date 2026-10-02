@@ -1,4 +1,4 @@
-import { REGIONS, RAW_MATERIALS, ENCOUNTER, LANTERN, EVENTS, PRISTINE, DELVE } from './data.js';
+import { REGIONS, RAW_MATERIALS, ENCOUNTER, LANTERN, EVENTS, PRISTINE, DELVE, DELVE_CONDITIONS } from './data.js';
 
 export const WALL = 0, FLOOR = 1;
 export const MAP_W = 38, MAP_H = 26;
@@ -30,12 +30,21 @@ function weightedPick(weights, rng) {
 }
 
 // One delve: rooms joined by L-shaped corridors, plus a few extra links so there are loops.
-// opts.elite puts an elite on the way out; opts.events is the pool of events not yet seen this run.
+// opts.elite puts an elite on the way out; opts.events is the pool of events not yet seen this run;
+// opts.cond is a delve condition (DELVE_CONDITIONS).
 export function generateRegion(regionIdx, seed, opts = {}) {
   const rng = mulberry32(seed);
   const region = REGIONS[regionIdx];
   const haunted = !!opts.elite;
-  const size = haunted ? DELVE.haunted : DELVE.plain;
+  const cond = DELVE_CONDITIONS[opts.cond] || {};
+  const base = haunted ? DELVE.haunted : DELVE.plain;
+  const size = {
+    rooms: Math.max(4, base.rooms + (cond.rooms || 0)),
+    nodes: Math.max(3, base.nodes + (cond.nodes || 0)),
+    chests: Math.max(0, base.chests + (cond.chests || 0)),
+  };
+  const raws = { ...region.raws };
+  for (const [k, w] of Object.entries(cond.raws || {})) raws[k] = (raws[k] || 0) + w;
   const tiles = new Uint8Array(MAP_W * MAP_H);
   const at = (x, y) => y * MAP_W + x;
   const carve = (x, y) => { if (x > 0 && y > 0 && x < MAP_W - 1 && y < MAP_H - 1) tiles[at(x, y)] = FLOOR; };
@@ -63,7 +72,7 @@ export function generateRegion(regionIdx, seed, opts = {}) {
   for (let i = 0; i < 2; i++) corridor(rooms[randInt(rng, 0, rooms.length - 1)], rooms[randInt(rng, 0, rooms.length - 1)]);
 
   const world = {
-    regionIdx, seed, tiles, rooms,
+    regionIdx, seed, tiles, rooms, cond: opts.cond || null,
     w: MAP_W, h: MAP_H,
     seen: new Uint8Array(MAP_W * MAP_H),
     objects: [],
@@ -101,7 +110,7 @@ export function generateRegion(regionIdx, seed, opts = {}) {
   const nearStart = rooms.slice(1).filter(r => r !== exitRoom)
     .sort((a, b) => dist[at(a.cx, a.cy)] - dist[at(b.cx, b.cy)]);
   const deskRoom = nearStart[0];
-  if (deskRoom) place('desk', deskRoom.cx, deskRoom.cy);
+  if (deskRoom && !cond.noDesk) place('desk', deskRoom.cx, deskRoom.cy);
   for (let i = 0; i < size.chests; i++) {
     const spot = freeTileIn(rooms[randInt(rng, 1, rooms.length - 1)]);
     if (spot) place('chest', ...spot);
@@ -114,7 +123,7 @@ export function generateRegion(regionIdx, seed, opts = {}) {
   for (let i = 0; i < size.nodes; i++) {
     const spot = freeTileIn(rooms[randInt(rng, 0, rooms.length - 1)]);
     if (!spot) continue;
-    const raw = weightedPick(region.raws, rng);
+    const raw = weightedPick(raws, rng);
     place('node', ...spot, { raw, amount: rng() < 0.35 ? 2 : 1, pristine: rng() < PRISTINE.chance });
   }
 
@@ -207,6 +216,7 @@ export function step(world, run, dx, dy, rng = Math.random) {
   world.stepsSinceFight++;
   if (world.stepsSinceFight < ENCOUNTER.graceSteps) return {};
   let chance = Math.min(ENCOUNTER.max, ENCOUNTER.base + run.dread * ENCOUNTER.perDread);
+  chance *= DELVE_CONDITIONS[world.cond]?.encounterMult ?? 1;
   if (run.oil <= 0) chance *= LANTERN.darkEncounterMult;
   if (rng() < chance) {
     world.stepsSinceFight = 0;
@@ -217,10 +227,11 @@ export function step(world, run, dx, dy, rng = Math.random) {
 }
 
 function burnOil(world, run) {
+  const oilMult = DELVE_CONDITIONS[world.cond]?.oilMult || 1;
   const perOil = LANTERN.stepsPerOil * (run.relics?.includes('mothlantern') ? 2 : 1);
   if (++world.oilSteps >= perOil) {
     world.oilSteps = 0;
-    run.oil = Math.max(0, run.oil - 1);
+    run.oil = Math.max(0, run.oil - oilMult); // a lightless delve drinks twice as much
   }
   world.radius = lightRadius(run.oil);
 }

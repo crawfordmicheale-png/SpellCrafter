@@ -1,4 +1,4 @@
-import { MAP, REGIONS } from './data.js';
+import { MAP, REGIONS, DELVE_CONDITIONS } from './data.js';
 import { mulberry32 } from './world.js';
 
 const randInt = (rng, lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
@@ -78,6 +78,14 @@ export function generateMap(act, seed) {
   };
   convert('haunted', 2);
   convert('shop', 1);
+
+  // Most delves show a condition on the map. The very first choice stays plain.
+  const conds = Object.keys(DELVE_CONDITIONS);
+  for (const n of nodes) {
+    if ((n.type === 'delve' || n.type === 'haunted') && n.row > 0 && rng() < MAP.conditionChance) {
+      n.cond = conds[randInt(rng, 0, conds.length - 1)];
+    }
+  }
 
   return { act, nodes, pos: null, visited: [] };
 }

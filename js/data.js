@@ -442,6 +442,36 @@ export const ENEMIES = {
     ],
     drops: ['ench_echo', 'ench_hallowed', 'raw_ichor', 'raw_gold', 'raw_wisp', 'raw_wisp'],
   },
+  // Pests: monsters that go after your cards. Stone fears none of them.
+  papermoth: {
+    name: 'Paper Moth', hp: 18,
+    desc: 'It has eaten every hymnal in the chapel. It is still hungry.',
+    moves: [
+      { actions: [{ type: 'devour' }, { type: 'attack', amount: 4 }] },
+      { actions: [{ type: 'attack', amount: 7 }] },
+    ],
+    drops: ['ench_swift', 'raw_rags', 'raw_rags'],
+  },
+  inkleech: {
+    name: 'Ink Leech', hp: 28,
+    desc: 'It drinks the ink off cheap pages and leaves them grey.',
+    moves: [
+      { actions: [{ type: 'smudge' }, { type: 'attack', amount: 5 }] },
+      { actions: [{ type: 'attack', amount: 9 }] },
+      { actions: [{ type: 'block', amount: 6 }, { type: 'smudge' }] },
+    ],
+    drops: ['raw_wisp', 'raw_kelp', 'ench_leech'],
+  },
+  rustwraith: {
+    name: 'Rust Wraith', hp: 34,
+    desc: 'Where it passes, silver blackens and gold goes dull.',
+    moves: [
+      { actions: [{ type: 'tarnish' }, { type: 'attack', amount: 6 }] },
+      { actions: [{ type: 'attack', amount: 4, times: 2 }] },
+      { actions: [{ type: 'block', amount: 8 }, { type: 'tarnish' }] },
+    ],
+    drops: ['raw_silver', 'raw_gold', 'raw_slate'],
+  },
   vellHollow: {
     name: 'Vell, Hollowed', hp: 58, elite: true,
     desc: 'Sister Vell, or the ink that wears her. It writes with her hands now.',
@@ -484,7 +514,7 @@ export const REGIONS = [
     name: 'The Chapel Ruins',
     intro: 'Pews split for firewood. Bones in every niche. Somewhere below, a bell.',
     raws: { ash: 3, bone: 3, rags: 2, timber: 2, gravesoil: 2, bloodroot: 2, moss: 1 },
-    encounters: [['acolyte'], ['gravemoth', 'gravemoth'], ['gravemoth'], ['acolyte', 'gravemoth']],
+    encounters: [['acolyte'], ['gravemoth', 'gravemoth'], ['gravemoth'], ['acolyte', 'gravemoth'], ['papermoth'], ['papermoth', 'gravemoth']],
     elites: ['gravedigger'], guardian: 'warden', hpMult: 1,
     tiles: { 1: '#2b2430', 2: '#352c3c', 3: '#1d1822', 4: '#4f7a45', 5: '#4a3f50', 6: '#6b5a74', 7: '#2a2230', 8: '#1f1a24', 9: '#231c28' },
   },
@@ -492,7 +522,7 @@ export const REGIONS = [
     name: 'The Drowned Archive',
     intro: 'The river took the library a century ago. The scribes never stopped working.',
     raws: { kelp: 3, moss: 2, slate: 2, silver: 2, rags: 2, bloodroot: 1, bone: 1 },
-    encounters: [['drowned'], ['drowned', 'gravemoth'], ['hound'], ['ghoul']],
+    encounters: [['drowned'], ['drowned', 'gravemoth'], ['hound'], ['ghoul'], ['inkleech'], ['inkleech', 'papermoth']],
     elites: ['abbot'], guardian: 'scrivener', hpMult: 1.1,
     tiles: { 1: '#1f2a30', 2: '#27363d', 3: '#141c21', 4: '#3f7a6f', 5: '#3a4d56', 6: '#557582', 7: '#1f2c33', 8: '#162027', 9: '#18242a' },
   },
@@ -500,7 +530,7 @@ export const REGIONS = [
     name: 'The Catacombs',
     intro: 'The dead here were buried standing up, facing the stair. They are still waiting for someone to come down it.',
     raws: { bone: 3, gravesoil: 3, ash: 2, slate: 2, silver: 1, moss: 1, timber: 1 },
-    encounters: [['wraith'], ['boneweaver'], ['wraith', 'acolyte'], ['boneweaver', 'gravemoth']],
+    encounters: [['wraith'], ['boneweaver'], ['wraith', 'acolyte'], ['boneweaver', 'gravemoth'], ['rustwraith'], ['rustwraith', 'inkleech']],
     elites: ['choirmaster'], guardian: 'saint', hpMult: 1.2,
     tiles: { 1: '#2a2826', 2: '#34312d', 3: '#1a1816', 4: '#6b6a4a', 5: '#4d4944', 6: '#79736a', 7: '#2a2724', 8: '#1e1c1a', 9: '#22201e' },
   },
@@ -508,7 +538,7 @@ export const REGIONS = [
     name: 'The Last Library',
     intro: 'Every book here was written by an Inkbinder. Most of them are still screaming.',
     raws: { gold: 2, silver: 2, bloodroot: 2, gravesoil: 2, bone: 1, slate: 1, kelp: 1 },
-    encounters: [['hound', 'ghoul'], ['inkling', 'inkling'], ['ghoul', 'gravemoth', 'gravemoth'], ['inkling', 'wraith'], ['boneweaver', 'inkling']],
+    encounters: [['hound', 'ghoul'], ['inkling', 'inkling'], ['ghoul', 'gravemoth', 'gravemoth'], ['inkling', 'wraith'], ['boneweaver', 'inkling'], ['rustwraith', 'papermoth'], ['inkleech', 'inkling']],
     elites: ['gravedigger', 'abbot', 'choirmaster'], guardian: null, boss: 'grimoire', hpMult: 1.3,
     tiles: { 1: '#2e2320', 2: '#392b26', 3: '#1e1614', 4: '#8a6a2a', 5: '#523a2e', 6: '#7a5840', 7: '#2e201a', 8: '#221814', 9: '#241915' },
   },
@@ -522,6 +552,18 @@ export const DELVE = {
   leaveDread: 0.5, // Dread is multiplied by this when you climb out
 };
 
+// Delve conditions, shown on the map before you choose. Most delves have one.
+//   raws: extra scavenge weights; rooms/nodes/chests: size changes; encounterMult and
+//   oilMult scale encounter chance and oil use; paperWear: extra use lost by paper cards
+//   cast in fights here; chestBonus: extra items per reliquary; leaveDread: Dread kept on leaving.
+export const DELVE_CONDITIONS = {
+  flooded:    { name: 'Flooded',         glyph: '≈', desc: 'Paper cards lose an extra use in fights here. Drowned Kelp everywhere.', raws: { kelp: 8 }, paperWear: 1 },
+  lightless:  { name: 'Lightless',       glyph: '◐', desc: 'Your lantern burns twice as fast. Reliquaries hold more.', oilMult: 2, chests: 1, chestBonus: 1 },
+  ossuary:    { name: 'Ossuary',         glyph: '✝', desc: 'Bone everywhere, and the dead are restless: things find you half again as often.', raws: { bone: 8, gravesoil: 3 }, nodes: 3, encounterMult: 1.5 },
+  collapsing: { name: 'Collapsing',      glyph: '▼', desc: 'Small and quick, with little to find. Climbing out clears all your Dread.', rooms: -3, nodes: -3, chests: -1, leaveDread: 0 },
+  hallowed:   { name: 'Hallowed ground', glyph: '✧', desc: 'Nothing wanders here, but there is no desk to write at.', encounterMult: 0, noDesk: true },
+};
+
 // The overworld map for each act.
 export const MAP = {
   rows: 8,          // 6 rows of choices, a camp row, then the guardian
@@ -531,6 +573,8 @@ export const MAP = {
   weights: { delve: 40, unknown: 30, haunted: 12, shop: 10, camp: 8 },
   // what an unknown node turns out to be
   unknown: { ambush: 0.15, cache: 0.12 },
+  conditionChance: 0.65, // chance a delve has a condition
+
 };
 
 export const NODE_TYPES = {
@@ -732,5 +776,6 @@ export const HINTS = {
   lantern: 'Your lantern is running low and the dark is closing in. Burn a card for oil, or climb back to the surface from the stairs up.',
   corruption: 'Blood and ichor are corrupting you. At 5 you are Tainted, at 10 Forsaken. Rest at desks or pray at shrines to cleanse it.',
   guardian: 'Something guards the way out of this delve. Beat it and it leaves a relic. Craft before you face it.',
+  pests: 'Some monsters go after your cards. Paper Moths eat paper. Ink Leeches smudge paper and wood. Rust Wraiths tarnish silver and gold. Stone fears none of them.',
   camp: 'A scriptorium. Craft as much as you like, then choose: rest to heal, or refill your lantern. You can only do one.',
 };
