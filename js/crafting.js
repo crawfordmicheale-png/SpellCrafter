@@ -254,7 +254,7 @@ export function makeStarterCard(key) {
   return {
     uid: uid(), name: s.name, crafted: false, starter: key,
     colors: s.colors, inkMat: null, cardMat: null, enchants: [],
-    cost: s.cost, hpCost: 0, purify: false, goldOnCast: 0,
+    cost: s.cost, hpCost: 0, purify: false, goldOnCast: 0, unplayable: !!s.unplayable,
     effects: s.effects.map(e => ({ ...e })),
     durability: Infinity, maxDurability: Infinity,
   };
@@ -280,15 +280,19 @@ const EFFECT_TEXT = {
   poison: n => `Apply ${n} Poison.`,
   loseMaxHp: n => `Lose ${n} max HP.`,
   nextFree: () => 'Your next card this turn costs 0.',
+  mimic: n => `Repeat your last card at ${n}% power.`,
 };
 
 export function describeCard(card) {
   const lines = card.effects.map(e => EFFECT_TEXT[e.type](e.amount));
+  if (card.unplayable) lines.push('Cannot be cast. Burn it or salvage it.');
   if (card.hpCost) lines.push(`Costs ${card.hpCost} HP.`);
   if (card.purify) lines.push('Purify 1 debuff.');
   if (card.goldOnCast) lines.push(`Gain ${card.goldOnCast} gold.`);
   if (card.enchants.includes('hallowed')) lines.push('Gain 4 Block.');
   if (card.enchants.includes('piercing')) lines.push('Ignores Block.');
+  if (card.enchants.includes('serrated')) lines.push('Bleed 2 on a hit.');
+  if (card.enchants.includes('withering')) lines.push('Apply 2 Frail.');
   return lines;
 }
 

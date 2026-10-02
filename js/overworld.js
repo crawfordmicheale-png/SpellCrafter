@@ -49,8 +49,8 @@ export function generateMap(act, seed) {
   }
   // The camp row sits right under the guardian; every path passes one.
   for (const n of nodes.filter(m => m.row === choiceRows - 1)) link(n, nodeAt(choiceRows, n.col));
-  const guardian = nodeAt(rows - 1, Math.floor(cols / 2));
-  for (const n of nodes.filter(m => m.row === choiceRows)) link(n, guardian);
+  const top = nodeAt(rows - 1, Math.floor(cols / 2));
+  for (const n of nodes.filter(m => m.row === choiceRows)) link(n, top);
 
   const parents = id => nodes.filter(n => n.next.includes(id));
   for (const n of [...nodes].sort((a, b) => a.row - b.row)) {
@@ -87,7 +87,11 @@ export function generateMap(act, seed) {
     }
   }
 
-  return { act, nodes, pos: null, visited: [] };
+  // Which guardian waits at the top this time. The last act always ends with the Grimoire.
+  const region = REGIONS[act];
+  const boss = region.boss || region.guardians[randInt(rng, 0, region.guardians.length - 1)];
+
+  return { act, nodes, pos: null, visited: [], guardian: boss };
 }
 
 // Nodes you can move to next.
@@ -96,4 +100,4 @@ export function availableNodes(map) {
   return map.nodes[map.pos].next.map(id => map.nodes[id]);
 }
 
-export const guardianOf = act => REGIONS[act].boss || REGIONS[act].guardian;
+export const guardianOf = map => map.guardian || REGIONS[map.act].boss || REGIONS[map.act].guardians[0];

@@ -1,4 +1,4 @@
-import { REGIONS, RAW_MATERIALS, ENCOUNTER, LANTERN, EVENTS, PRISTINE, DELVE, DELVE_CONDITIONS } from './data.js';
+import { REGIONS, RAW_MATERIALS, ENCOUNTER, LANTERN, EVENTS, PRISTINE, DELVE, DELVE_CONDITIONS, TRAPS } from './data.js';
 
 export const WALL = 0, FLOOR = 1;
 export const MAP_W = 38, MAP_H = 26;
@@ -36,12 +36,13 @@ export function generateRegion(regionIdx, seed, opts = {}) {
   const rng = mulberry32(seed);
   const region = REGIONS[regionIdx];
   const haunted = !!opts.elite;
-  const cond = DELVE_CONDITIONS[opts.cond] || {};
-  const base = haunted ? DELVE.haunted : DELVE.plain;
+  const lower = !!opts.lower; // the level beneath a trapdoor
+  const cond = lower ? DELVE.lower : DELVE_CONDITIONS[opts.cond] || {};
+  const base = lower ? DELVE.lower : haunted ? DELVE.haunted : DELVE.plain;
   const size = {
-    rooms: Math.max(4, base.rooms + (cond.rooms || 0)),
-    nodes: Math.max(3, base.nodes + (cond.nodes || 0)),
-    chests: Math.max(0, base.chests + (cond.chests || 0)),
+    rooms: Math.max(4, base.rooms + (lower ? 0 : cond.rooms || 0)),
+    nodes: Math.max(3, base.nodes + (lower ? 0 : cond.nodes || 0)),
+    chests: Math.max(0, base.chests + (lower ? 0 : cond.chests || 0)),
   };
   const raws = { ...region.raws };
   for (const [k, w] of Object.entries(cond.raws || {})) raws[k] = (raws[k] || 0) + w;
@@ -72,7 +73,7 @@ export function generateRegion(regionIdx, seed, opts = {}) {
   for (let i = 0; i < 2; i++) corridor(rooms[randInt(rng, 0, rooms.length - 1)], rooms[randInt(rng, 0, rooms.length - 1)]);
 
   const world = {
-    regionIdx, seed, tiles, rooms, cond: opts.cond || null,
+    regionIdx, seed, tiles, rooms, cond: lower ? null : opts.cond || null, lower,
     w: MAP_W, h: MAP_H,
     seen: new Uint8Array(MAP_W * MAP_H),
     objects: [],
@@ -103,20 +104,21 @@ export function generateRegion(regionIdx, seed, opts = {}) {
   };
 
   // The way back up to the surface is where you arrive. The way out is at the far end.
-  world.objects.push({ id: nextId++, type: 'up', x: world.px, y: world.py });
+  // There is no climbing back to the surface from a lower level.
+  if (!lower) world.objects.push({ id: nextId++, type: 'up', x: world.px, y: world.py });
   place('exit', exitRoom.cx, exitRoom.cy, { guard: opts.elite || null });
 
   // A writing desk close to the start, so you can craft what you find.
   const nearStart = rooms.slice(1).filter(r => r !== exitRoom)
     .sort((a, b) => dist[at(a.cx, a.cy)] - dist[at(b.cx, b.cy)]);
   const deskRoom = nearStart[0];
-  if (deskRoom && !cond.noDesk) place('desk', deskRoom.cx, deskRoom.cy);
+  if (deskRoom && !cond.noDesk && !lower) place('desk', deskRoom.cx, deskRoom.cy);
   for (let i = 0; i < size.chests; i++) {
     const spot = freeTileIn(rooms[randInt(rng, 1, rooms.length - 1)]);
     if (spot) place('chest', ...spot);
   }
   const eventPool = [...(opts.events || Object.keys(EVENTS))];
-  if (eventPool.length && rng() < DELVE.eventChance) {
+  if (eventPool.length && !lower && rng() < DELVE.eventChance) {
     const spot = freeTileIn(rooms[randInt(rng, 1, rooms.length - 1)]);
     if (spot) place('event', ...spot, { event: eventPool[randInt(rng, 0, eventPool.length - 1)] });
   }
@@ -124,11 +126,68 @@ export function generateRegion(regionIdx, seed, opts = {}) {
     const spot = freeTileIn(rooms[randInt(rng, 0, rooms.length - 1)]);
     if (!spot) continue;
     const raw = weightedPick(raws, rng);
-    place('node', ...spot, { raw, amount: rng() < 0.35 ? 2 : 1, pristine: rng() < PRISTINE.chance });
+    place('node', ...spot, { raw, amount: rng() < 0.35 ? 2 : 1, pristine: rng() < PRISTINE.chance * (lower ? 2 : 1) });
+  }
+
+  // ----- secrets -----
+  if (rng() < DELVE.secretChance) placeSecretRoom(world, rng, place, occupied);
+  const inRoom = (x, y) => rooms.some(r => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
+  const halls = []; // corridor tiles, where traps hide
+  for (let y = 1; y < MAP_H - 1; y++) for (let x = 1; x < MAP_W - 1; x++) {
+    if (tiles[at(x, y)] === FLOOR && !inRoom(x, y) && !occupied.has(at(x, y)) && !world.objects.some(o => o.x === x && o.y === y)) halls.push([x, y]);
+  }
+  const traps = randInt(rng, ...DELVE.traps);
+  const kinds = Object.keys(TRAPS);
+  for (let i = 0; i < traps && halls.length; i++) {
+    const [x, y] = halls.splice(randInt(rng, 0, halls.length - 1), 1)[0];
+    place('trap', x, y, { trap: kinds[randInt(rng, 0, kinds.length - 1)] });
+  }
+  const quiet = opts.cond === 'hallowed' || opts.cond === 'collapsing';
+  if (!lower && !quiet && rng() < DELVE.lowerChance) {
+    const r = rooms.slice(1).filter(m => m !== exitRoom)[randInt(rng, 0, Math.max(0, rooms.length - 3))];
+    const spot = r && freeTileIn(r);
+    if (spot) place('hatch', ...spot);
   }
 
   reveal(world);
   return world;
+}
+
+// A small room behind a cracked wall: two tiles out from an existing room, joined by a
+// short passage whose first tile is the crack. Holds a reliquary and a glinting spot.
+function placeSecretRoom(world, rng, place, occupied) {
+  const { tiles, rooms } = world;
+  const at = (x, y) => y * MAP_W + x;
+  const wallAt = (x, y) => x > 0 && y > 0 && x < MAP_W - 1 && y < MAP_H - 1 && tiles[at(x, y)] === WALL;
+  const clear = (x0, y0, x1, y1) => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (!wallAt(x, y)) return false;
+    return true;
+  };
+  for (let tries = 0; tries < 40; tries++) {
+    const r = rooms[randInt(rng, 1, rooms.length - 1)];
+    const dir = randInt(rng, 0, 3);
+    let crack, pass, room; // tiles: crack, the passage tile after it, and the 3x3 room's top-left
+    if (dir === 0) { const y = randInt(rng, r.y, r.y + r.h - 1); crack = [r.x + r.w, y]; pass = [r.x + r.w + 1, y]; room = [r.x + r.w + 2, y - 1]; }
+    else if (dir === 1) { const y = randInt(rng, r.y, r.y + r.h - 1); crack = [r.x - 1, y]; pass = [r.x - 2, y]; room = [r.x - 5, y - 1]; }
+    else if (dir === 2) { const x = randInt(rng, r.x, r.x + r.w - 1); crack = [x, r.y + r.h]; pass = [x, r.y + r.h + 1]; room = [x - 1, r.y + r.h + 2]; }
+    else { const x = randInt(rng, r.x, r.x + r.w - 1); crack = [x, r.y - 1]; pass = [x, r.y - 2]; room = [x - 1, r.y - 5]; }
+    const [rx, ry] = room;
+    // The passage and room (plus a wall's width around them) must be solid rock.
+    const [px, py] = pass, [cx, cy] = crack;
+    const box = [Math.min(px, rx) - 1, Math.min(py, ry) - 1, Math.max(px, rx + 2) + 1, Math.max(py, ry + 2) + 1];
+    if (!clear(...box) || !wallAt(cx, cy)) continue;
+    const side = dir < 2 ? [[cx, cy - 1], [cx, cy + 1]] : [[cx - 1, cy], [cx + 1, cy]];
+    if (side.some(([x, y]) => !wallAt(x, y))) continue;
+    tiles[at(cx, cy)] = FLOOR; tiles[at(px, py)] = FLOOR;
+    for (let y = ry; y < ry + 3; y++) for (let x = rx; x < rx + 3; x++) tiles[at(x, y)] = FLOOR;
+    place('crack', cx, cy);
+    place('chest', rx + 1, ry + 1, { secret: true });
+    const raws = ['silver', 'gold', 'slate', 'mirror'];
+    place('node', rx, ry + 2, { raw: raws[randInt(rng, 0, raws.length - 1)], amount: 2, pristine: true });
+    world.secret = { x: rx + 1, y: ry + 1 };
+    return true;
+  }
+  return false;
 }
 
 export const isFloor = (world, x, y) =>
@@ -155,7 +214,7 @@ function distances(world, sx, sy) {
 }
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-export const BLOCKING = new Set(['merchant', 'elite', 'boss', 'desk']);
+export const BLOCKING = new Set(['merchant', 'elite', 'boss', 'desk', 'crack']);
 
 // Shortest walkable path from the player to (tx, ty), excluding the start tile.
 // Only goes through tiles you have seen.
@@ -217,6 +276,8 @@ export function step(world, run, dx, dy, rng = Math.random) {
   if (world.stepsSinceFight < ENCOUNTER.graceSteps) return {};
   let chance = Math.min(ENCOUNTER.max, ENCOUNTER.base + run.dread * ENCOUNTER.perDread);
   chance *= DELVE_CONDITIONS[world.cond]?.encounterMult ?? 1;
+  if (world.lower) chance *= DELVE.lower.encounterMult;
+  if ((run.depth || 0) >= 6) chance *= 1.25; // Depth 6: restless dead
   if (run.oil <= 0) chance *= LANTERN.darkEncounterMult;
   if (rng() < chance) {
     world.stepsSinceFight = 0;

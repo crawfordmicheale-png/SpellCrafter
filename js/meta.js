@@ -4,7 +4,8 @@
 
 const KEY = 'spellcrafter.meta.v1';
 
-export const freshMeta = () => ({ grimoire: [], runs: 0, wins: 0, deepest: -1 });
+// depthUnlocked: the hardest Depth you may choose. Winning at your highest opens the next.
+export const freshMeta = () => ({ grimoire: [], runs: 0, wins: 0, deepest: -1, depthUnlocked: 0, bestDepth: -1 });
 
 function storage() {
   try { return globalThis.localStorage || null; } catch { return null; }
@@ -31,11 +32,18 @@ export function learn(meta, recipeId, store) {
   }
 }
 
-export function recordRun(meta, { won, depth }, store) {
+// depth: how far you got (act index). level: the Depth you played at.
+export function recordRun(meta, { won, depth, level = 0, maxLevel = 0 }, store) {
   meta.runs++;
-  if (won) meta.wins++;
   meta.deepest = Math.max(meta.deepest, depth);
+  let unlocked = null;
+  if (won) {
+    meta.wins++;
+    meta.bestDepth = Math.max(meta.bestDepth ?? -1, level);
+    if (level >= meta.depthUnlocked && level < maxLevel) unlocked = meta.depthUnlocked = level + 1;
+  }
   saveMeta(meta, store);
+  return { unlocked };
 }
 
 export function forget(store) {

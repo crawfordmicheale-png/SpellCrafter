@@ -22,6 +22,21 @@ function learnRandom(run, rng) {
   return r;
 }
 
+// Something Vell says about what you have been writing. The first that fits wins.
+export function vellRemark(run) {
+  const crafted = run.deck.filter(k => k.crafted);
+  const named = crafted.find(k => k.customName);
+  if (named) return `She sees ${named.customName} in your hand and smiles. "You named it. I named mine too, once."`;
+  const spell = crafted.find(k => k.recipeId);
+  if (spell) return `"${spell.name}," she reads off your page. "My teacher wrote that one. Badly."`;
+  if (crafted.some(k => k.inkMat === 'blood' || k.inkMat === 'ichor')) return 'She looks at the blood-written cards in your deck and says nothing for a long time.';
+  if (crafted.some(k => k.colors.includes('grey'))) return '"Pale ink," she says. "It only ever remembers. It never says anything new."';
+  if (crafted.some(k => k.cardMat === 'stone')) return '"Stone," she says, and knocks on one of your cards. "Good. Nothing down here can eat stone."';
+  if (crafted.length && crafted.every(k => k.cardMat === 'paper')) return '"Paper," she says. "It burns so easily. So do we."';
+  if (!crafted.length) return '"You haven\'t written anything yet," she says. "Starters won\'t get you to the bottom."';
+  return null;
+}
+
 // Which version of the last story beat you get.
 export function lastBeat(run) {
   const trust = run.story?.trust || 0;

@@ -1,4 +1,4 @@
-import { ENEMIES, REACTIONS, CORRUPTION } from './data.js';
+import { ENEMIES, REACTIONS, CORRUPTION, FRAIL_MULT } from './data.js';
 import { salvageRoll, recordCast, GROWS } from './crafting.js';
 
 export function shuffle(arr, rng = Math.random) {
@@ -11,16 +11,18 @@ export function shuffle(arr, rng = Math.random) {
 
 // A fight. Mutates `run` (hp, maxHp, gold, deck, inventory) as things happen.
 // paperWear: extra uses a paper card loses per cast (a flooded delve).
-export function createCombat(run, enemyKeys, rng = Math.random, { hpMult = 1, paperWear = 0 } = {}) {
+// strength: extra Strength every enemy starts with (from the Depth).
+export function createCombat(run, enemyKeys, rng = Math.random, { hpMult = 1, paperWear = 0, strength = 0 } = {}) {
   const c = {
     run, rng,
     enemies: enemyKeys.map(key => {
       const e = ENEMIES[key];
       const hp = Math.round(e.hp * hpMult);
-      return { key, name: e.name, hp, maxHp: hp, block: 0, poison: 0, weak: 0, strength: 0, moveIdx: 0 };
+      return { key, name: e.name, hp, maxHp: hp, block: 0, poison: 0, weak: 0, strength, bleed: 0, frail: 0, moveIdx: 0 };
     }),
     hunger: {}, // card uid -> times cast this fight (Hungering)
-    player: { block: 0, energy: 0, weak: 0, poison: 0, nextFree: false },
+    player: { block: 0, energy: 0, weak: 0, poison: 0, frail: 0, nextFree: false },
+    lastCast: null,      // { name, effects } of the last card cast, for Pale ink to repeat
     drawPile: shuffle([...run.deck], rng),
     hand: [], discard: [], exhaust: [],
     swiftUsed: new Set(),
@@ -53,6 +55,11 @@ export function createCombat(run, enemyKeys, rng = Math.random, { hpMult = 1, pa
 }
 
 const log = (c, msg) => c.log.push(msg);
+// Frail cuts the Block you gain by a quarter.
+const gainBlock = (c, n) => { c.player.block += c.player.frail > 0 ? Math.floor(n * FRAIL_MULT) : n; };
+const bleedBonus = c => (hasRelic(c.run, 'leechjar') ? 1 : 0);
+// What Pale ink can repeat. Anything else on a card is not copied.
+const MIMICS = new Set(['damage', 'damageAll', 'block', 'draw', 'heal', 'poison']);
 const hasRelic = (run, id) => !!run.relics?.includes(id);
 const pairKey = (a, b) => [a, b].sort().join('+');
 
@@ -156,6 +163,7 @@ export function effectiveCost(c, card) {
 // Returns null if the card can be played, or a reason it can't.
 export function canPlay(c, card) {
   if (c.over) return 'The fight is over.';
+  if (card.unplayable) return `${card.name} cannot be cast.`;
   if (effectiveCost(c, card) > c.player.energy) return 'Not enough mana.';
   const blood = bloodCost(c, card);
   if (blood && c.run.hp <= blood) return 'Not enough blood left to pay.';
@@ -212,13 +220,32 @@ export function playCard(c, cardUid, targetIdx = 0) {
             dealtTotal += r.dealt; killed ||= r.killed;
           }
           break;
-        case 'block': c.player.block += n; break;
+        case 'block': gainBlock(c, n); break;
         case 'draw': draw(c, n); break;
         case 'heal': c.run.hp = Math.min(c.run.maxHp, c.run.hp + n); break;
         case 'poison':
           if (!target || target.hp <= 0) target = alive(c)[0];
           if (target) target.poison += n;
           break;
+        case 'mimic': {
+          const last = c.lastCast;
+          if (!last) { log(c, 'The pale ink finds nothing to remember.'); break; }
+          const pct = n + (hasRelic(c.run, 'paleglass') ? 25 : 0);
+          log(c, `The pale ink repeats ${last.name} at ${pct}%.`);
+          for (const le of last.effects) {
+            const m = Math.max(1, Math.round(le.amount * pct / 100));
+            if (le.type === 'damage' || le.type === 'damageAll') {
+              for (const en of le.type === 'damageAll' ? alive(c) : [target && target.hp > 0 ? target : alive(c)[0]].filter(Boolean)) {
+                const r = damageEnemy(c, en, m, pierce);
+                dealtTotal += r.dealt; killed ||= r.killed;
+              }
+            } else if (le.type === 'block') gainBlock(c, m);
+            else if (le.type === 'draw') draw(c, m);
+            else if (le.type === 'heal') c.run.hp = Math.min(c.run.maxHp, c.run.hp + m);
+            else if (le.type === 'poison') { const t = target && target.hp > 0 ? target : alive(c)[0]; if (t) t.poison += m; }
+          }
+          break;
+        }
         case 'loseMaxHp':
           if (scale === 1) {
             c.run.maxHp = Math.max(1, c.run.maxHp - n);
@@ -231,9 +258,21 @@ export function playCard(c, cardUid, targetIdx = 0) {
   };
   apply(1);
   if (card.enchants.includes('echo')) { log(c, `${card.name} echoes.`); apply(0.5); }
+  // Remember this card for Pale ink, with its amounts as cast (not Pale cards themselves).
+  if (!card.effects.some(e => e.type === 'mimic')) {
+    const kept = card.effects.filter(e => MIMICS.has(e.type))
+      .map(e => ({ type: e.type, amount: Math.max(1, Math.round((e.amount + (GROWS.has(e.type) ? growth : 0)) * smudge)) }));
+    if (kept.length) c.lastCast = { name: card.name, effects: kept };
+  }
+  if (!target || target.hp <= 0) target = alive(c)[0];
+  if (target && card.enchants.includes('serrated') && dealtTotal > 0) {
+    target.bleed += 2 + bleedBonus(c);
+    log(c, `${target.name} bleeds.`);
+  }
+  if (target && card.enchants.includes('withering')) target.frail += 2;
 
   if (card.enchants.includes('hungering')) c.hunger[card.uid] = (c.hunger[card.uid] || 0) + 1;
-  if (card.enchants.includes('hallowed')) c.player.block += 4;
+  if (card.enchants.includes('hallowed')) gainBlock(c, 4);
   if (card.enchants.includes('leech') && dealtTotal > 0) {
     const heal = Math.floor(dealtTotal / 4);
     c.run.hp = Math.min(c.run.maxHp, c.run.hp + heal);
@@ -335,9 +374,11 @@ function react(c, key, target) {
     const n = (e.amount || 0) * mult;
     switch (e.type) {
       case 'draw': draw(c, n); break;
-      case 'block': c.player.block += n; break;
+      case 'block': gainBlock(c, n); break;
       case 'heal': c.run.hp = Math.min(c.run.maxHp, c.run.hp + n); break;
       case 'mana': c.player.energy += n; break;
+      case 'bleed': if (target) target.bleed += n + bleedBonus(c); break;
+      case 'frail': if (target) target.frail += n; break;
       case 'cure': c.player.poison = 0; break;
       case 'weaken': if (target) target.weak += n; break;
       case 'strip': if (target) target.block = 0; break;
@@ -370,6 +411,7 @@ export function endTurn(c) {
   c.discard.push(...c.hand.filter(k => !k.enchants.includes('bound')));
   c.hand = kept;
   if (c.player.weak > 0) c.player.weak--;
+  if (c.player.frail > 0) c.player.frail--;
   if (c.tarnish > 0) c.tarnish--;
 
   for (const e of alive(c)) {
@@ -383,20 +425,30 @@ export function endTurn(c) {
       if (e.hp <= 0) { log(c, `${e.name} rots away.`); continue; }
     }
     for (const a of currentMove(e).actions) {
+      if (e.hp <= 0) break; // bled out mid-turn
       switch (a.type) {
         case 'attack':
-          for (let i = 0; i < (a.times || 1); i++) {
+          for (let i = 0; i < (a.times || 1) && e.hp > 0; i++) {
             damagePlayer(c, e, a.amount);
             if (c.over) return;
+            if (e.bleed > 0) {
+              const n = Math.min(e.hp, e.bleed);
+              e.hp -= n;
+              log(c, `${e.name} bleeds for ${n}.`);
+              checkPhase(c, e);
+              if (e.hp <= 0) log(c, `${e.name} bleeds out.`);
+            }
           }
           break;
-        case 'block': e.block += a.amount; break;
+        case 'block': e.block += e.frail > 0 ? Math.floor(a.amount * FRAIL_MULT) : a.amount; break;
         case 'buff': e[a.status] += a.amount; break;
         case 'debuff': c.player[a.status] += a.amount; break;
         case 'devour': case 'smudge': case 'tarnish': pestAction(c, e, a.type); break;
       }
     }
     if (e.weak > 0) e.weak--;
+    if (e.bleed > 0) e.bleed--;
+    if (e.frail > 0) e.frail--;
     e.moveIdx++;
   }
 

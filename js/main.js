@@ -1,9 +1,9 @@
 import {
   INK_COLORS, INK_MATERIALS, CARD_MATERIALS, ENCHANTMENTS, INGREDIENTS, RECIPES, ENEMIES, REPAIR_PRICE,
   REGIONS, RAW_MATERIALS, LANTERN, EVENTS, RELICS, REACTIONS, VARIANTS, CORRUPTION, PRISTINE, HINTS,
-  STORY, NODE_TYPES, OIL_WARE, CAMP, MAP, DELVE_CONDITIONS, ALT_SOURCES, SECOND_INK_COST, SIGNATURES, NAME_MAX,
+  STORY, NODE_TYPES, OIL_WARE, CAMP, MAP, DELVE_CONDITIONS, DEPTHS, UNLOCKS, MERCHANT, TRAPS, SIGNATURES as SIGS, ALT_SOURCES, SECOND_INK_COST, SIGNATURES, NAME_MAX,
 } from './data.js';
-import { resolveEvent } from './events.js';
+import { resolveEvent, vellRemark } from './events.js';
 import { availableNodes, guardianOf } from './overworld.js';
 import { loadMeta, saveMeta, learn, recordRun, forget, loadSoundPref, saveSoundPref, saveRunText, loadRunText, clearRun } from './meta.js';
 import { unlock, sfx, setEnabled, isEnabled, startAmbient, stopAmbient } from './audio.js';
@@ -17,9 +17,10 @@ import {
   createRun, currentRegion, descend, craftIntoDeck, salvageCard, rollRewards, applyRewards,
   reinscribe, mend, scavenge, openChest, burnCard, burnValue, resurface,
   gainRelic, relicChoices, hasRelic, serializeRun, deserializeRun, isUnlocked, oilMax, corruptionState,
-  currentNode, enterNode, leaveDelve, campChoice, buyOil,
+  currentNode, enterNode, leaveDelve, campChoice, buyOil, fightOptions, priceFor,
+  springTrap, enterLower, meetMerchant, deliverFavor, canDeliver, unlocksBetween, isLocked,
 } from './run.js';
-import { step, findPath, objectAt, BLOCKING } from './world.js';
+import { step, findPath, objectAt, BLOCKING, isFloor, mulberry32 } from './world.js';
 import { createExploreView, objectName } from './explore-view.js';
 
 const app = document.getElementById('app');
@@ -46,11 +47,14 @@ let standingOn = null;
 let eventCtx = null;  // { obj, id, result }: obj is a delve object or a map node
 let mapNote = null;   // a line of news shown on the map
 let deckOpen = false; // the deck viewer is showing
+let infoUid = null;   // the card whose details are showing (press and hold)
 let lastScreen = null;
 let forgetArmed = false;
 let abandonArmed = false;
 let meta = loadMeta();
 let selectedVariant = VARIANTS[meta.lastVariant] && isUnlocked(meta, meta.lastVariant) ? meta.lastVariant : 'inkbinder';
+let selectedDepth = Math.min(meta.lastDepth || 0, meta.depthUnlocked || 0);
+let endNews = null;   // what this run unlocked, for the end screen
 setEnabled(loadSoundPref());
 
 const STEP_MS = 85;
@@ -96,7 +100,7 @@ function cardHtml(card, { cost = card.cost, disabled = false, action = '', extra
   const tag = action ? 'button' : 'div';
   // Wordy cards get a compact layout so their text stays on the card.
   const dense = describeCard(card).length + (card.flavor ? 1 : 0) >= 4;
-  return `<${tag} class="card mat-${mat}${card.recipeId ? ' named' : ''}${dense ? ' dense' : ''}${card.pristine ? ' pristine' : ''}${disabled ? ' disabled' : ''}${cls ? ` ${cls}` : ''}" ${action} ${disabled && action ? 'aria-disabled="true"' : ''}>
+  return `<${tag} data-cid="${card.uid}" class="card mat-${mat}${card.recipeId ? ' named' : ''}${dense ? ' dense' : ''}${card.pristine ? ' pristine' : ''}${disabled ? ' disabled' : ''}${cls ? ` ${cls}` : ''}" ${action} ${disabled && action ? 'aria-disabled="true"' : ''}>
     <span class="cost${cost < card.cost ? ' free' : cost > card.cost ? ' dear' : ''}">${cost}</span>
     ${card.hpCost ? `<span class="blood" title="Costs ${card.hpCost} HP">${card.hpCost}</span>` : ''}
     <span class="cname">${card.name}</span>
@@ -115,6 +119,8 @@ function statusChips(s) {
   if (s.poison) out.push(`<span class="chip poison">Poison ${s.poison}</span>`);
   if (s.weak) out.push(`<span class="chip weak">Weak ${s.weak}</span>`);
   if (s.strength) out.push(`<span class="chip str">Strength ${s.strength}</span>`);
+  if (s.bleed) out.push(`<span class="chip bleed" title="Loses ${s.bleed} HP each time it attacks">Bleed ${s.bleed}</span>`);
+  if (s.frail) out.push(`<span class="chip frail" title="Gains a quarter less Block">Frail ${s.frail}</span>`);
   return out.join('');
 }
 
@@ -157,6 +163,7 @@ function renderBar() {
       <span class="stat gold" title="Gold">Gold <b>${run.gold}</b></span>
       <button class="stat deck deckbtn" data-act="openDeck" title="See your deck (V)" aria-haspopup="dialog">Deck <b>${run.deck.length}</b></button>
       <span class="stat dread" title="Dread rises as you wander. Monsters find you more often.">Dread <b>${run.dread}</b></span>
+      ${run.depth ? `<span class="stat depth" title="${DEPTHS.slice(0, run.depth).map((d, i) => `${i + 1}. ${d.name}`).join('&#10;')}">Depth <b>${run.depth}</b></span>` : ''}
       ${run.corruption ? `<span class="stat corruption" title="Corruption ${run.corruption}. Tainted at ${CORRUPTION.tainted}: Black and Blood cards +${CORRUPTION.taintBonus}, but you start fights Weak. Forsaken at ${CORRUPTION.forsaken}: forbidden recipes open, but enemies gain Strength.">Corruption <b>${run.corruption}${corruptionState(run) ? ` · ${corruptionState(run)}` : ''}</b></span>` : ''}
     </span>
     ${run.relics.length ? `<span class="relics">${run.relics.map(relicIcon).join('')}</span>` : ''}
@@ -188,14 +195,26 @@ function renderTitle() {
       return `<button class="variant${id === selectedVariant ? ' sel' : ''}${open ? '' : ' locked'}" data-act="pickVariant" data-id="${id}" ${open ? '' : 'disabled'} aria-pressed="${id === selectedVariant}">
         ${portrait('player', 'varart', v.swap)}<b>${v.name}</b><span>${open ? v.desc : `Locked. ${v.unlock.text}.`}</span></button>`;
     }).join('')}</div>
+    ${depthPicker()}
     <div class="title-actions">
       ${savedSummary() ? `<button class="primary" data-act="continue">Continue: ${savedSummary()}</button>
         <button data-act="begin">${abandonArmed ? 'Tap again to abandon it and start over' : 'New run'}</button>`
         : '<button class="primary" data-act="begin">Descend into the chapel</button>'}
+      <button data-act="daily" title="The same seed for everyone today. Standard Inkbinder, Depth 0.">Daily descent${meta.daily?.date === todayUTC() ? ` (${meta.daily.won ? 'won' : `fell in ${REGIONS[meta.daily.act].name}`})` : ''}</button>
       <button data-act="codex">Your Grimoire (${meta.grimoire.length} of ${RECIPES.length})</button>
     </div>
     ${meta.runs ? `<p class="note">Runs: ${meta.runs} · Victories: ${meta.wins} · Deepest: ${meta.deepest >= 0 ? REGIONS[meta.deepest].name : 'none'}</p>` : ''}
   </section>`;
+}
+
+function depthPicker() {
+  const open = meta.depthUnlocked || 0;
+  if (!open) return `<p class="note depthteaser">Win a run to open the Depths: harder runs, one rule at a time.</p>`;
+  const levels = Array.from({ length: open + 1 }, (_, n) => `<button class="depthpick${n === selectedDepth ? ' sel' : ''}" data-act="pickDepth" data-n="${n}" aria-pressed="${n === selectedDepth}" title="${n ? DEPTHS[n - 1].name : 'The run as written'}">${n}</button>`).join('');
+  const rules = DEPTHS.slice(0, selectedDepth).map((d, i) => `<li><b>${i + 1}. ${d.name}.</b> ${d.desc}</li>`).join('');
+  return `<h3 class="section-title">Depth</h3>
+    <div class="depths" role="group" aria-label="Depth">${levels}</div>
+    ${selectedDepth ? `<ul class="depthrules">${rules}</ul>` : '<p class="note">Depth 0: the run as written.</p>'}`;
 }
 
 function savedSummary() {
@@ -203,7 +222,7 @@ function savedSummary() {
   if (!text) return null;
   try {
     const { run: r } = JSON.parse(text);
-    return `${REGIONS[r.regionIdx].name}, ${r.hp}/${r.maxHp} HP`;
+    return `${REGIONS[r.regionIdx].name}${r.depth ? `, Depth ${r.depth}` : ""}, ${r.hp}/${r.maxHp} HP`;
   } catch { return null; }
 }
 
@@ -225,6 +244,14 @@ function renderCodex() {
     <h3 class="section-title">Ink reactions</h3>
     <p class="note">Cast an inscribed card right after one of a different ink, or cast a two-ink card, to set off the reaction for that pair. Starter cards do not react.</p>
     <ul class="reactlist">${Object.entries(REACTIONS).map(([k, r]) => `<li><span class="pair">${inkPair(k)}</span><b>${r.name}</b><span>${r.desc}</span></li>`).join('')}</ul>
+    <h3 class="section-title">Unlocks</h3>
+    <p class="note">Spells you know unlock new monster parts and relics for the runs after. You know ${meta.grimoire.length}.</p>
+    <ul class="unlocklist">${UNLOCKS.map(u => {
+      const got = meta.grimoire.length >= u.at;
+      const name = u.kind === 'relic' ? RELICS[u.id].name : `${ENCHANTMENTS[u.id].part} (${ENCHANTMENTS[u.id].name})`;
+      const desc = u.kind === 'relic' ? RELICS[u.id].desc : ENCHANTMENTS[u.id].desc;
+      return `<li class="${got ? 'got' : ''}"><b>${u.at} spell${u.at === 1 ? '' : 's'}</b><span>${got ? `${name}: ${desc}` : 'Locked'}</span></li>`;
+    }).join('')}</ul>
     <h3 class="section-title">Relics</h3>
     <ul class="reliclist">${Object.keys(RELICS).map(id => `<li>${portrait(`relic_${id}`, 'relicart')}<div><b>${RELICS[id].name}</b><span>${RELICS[id].desc}</span></div></li>`).join('')}</ul>
     <footer class="screen-foot">
@@ -247,7 +274,8 @@ function nodePos(n) {
 
 const nodeInfo = n => {
   if (n.type === 'guardian') {
-    return { name: ENEMIES[guardianOf(run.regionIdx)].name, desc: run.regionIdx === REGIONS.length - 1 ? 'The first book. Beat it to end the run.' : NODE_TYPES.guardian.desc, sprite: guardianOf(run.regionIdx) };
+    const g = guardianOf(run.map);
+    return { name: ENEMIES[g].name, desc: run.regionIdx === REGIONS.length - 1 ? 'The first book. Beat it to end the run.' : `${ENEMIES[g].desc} ${NODE_TYPES.guardian.desc}`, sprite: g };
   }
   const cond = DELVE_CONDITIONS[n.cond];
   const t = NODE_TYPES[n.type];
@@ -291,6 +319,7 @@ function renderOverworld(scroll) {
     </div>
     <aside class="side owside">
       ${hintHtml('map')}
+      <p class="guardline">${portrait(guardianOf(run.map), 'guardart')}<span>Waiting at the top: <b>${ENEMIES[guardianOf(run.map)].name}</b></span></p>
       <h3 class="panel-title">Where to?</h3>
       <p class="note">Pick a lit node. You can only follow the lines upward. The guardian waits at the top.</p>
       <div class="meters">
@@ -319,20 +348,44 @@ function mountExplore() {
     <aside class="side" id="side"></aside>
   </section>`;
   view?.destroy();
-  view = createExploreView(document.getElementById('map'), run.world, { onTile: walkTo, onHover: hover, playerSwap: playerSwap() });
+  view = createExploreView(document.getElementById('map'), run.world, {
+    onTile: walkTo, onHover: hover, onSwipe: swipe, playerSwap: playerSwap(),
+    sharpEyes: () => hasRelic(run, 'cartographer'),
+  });
   view.world = run.world;
 }
 
 function hover(x, y, e) {
   const el = document.getElementById('hover');
   if (!el) return;
-  const o = x == null ? null : objectAt(run.world, x, y);
+  let o = x == null ? null : objectAt(run.world, x, y);
+  if (o?.type === 'trap' && !trapVisible(o)) o = null;
   if (!o || !run.world.seen[y * run.world.w + x]) { el.hidden = true; return; }
   const r = el.parentElement.getBoundingClientRect();
   el.textContent = objectName(o);
   el.style.left = `${e.clientX - r.left + 12}px`;
   el.style.top = `${e.clientY - r.top + 12}px`;
   el.hidden = false;
+}
+
+// Traps show only when you are close, unless you carry the Cartographer's Chalk.
+const trapVisible = o => hasRelic(run, 'cartographer') || Math.abs(o.x - run.world.px) + Math.abs(o.y - run.world.py) <= 2;
+
+// A swipe walks straight in that direction until something is in the way or worth a look.
+function swipe(dx, dy) {
+  if (screen !== 'explore') return;
+  const w = run.world, path = [];
+  let x = w.px, y = w.py;
+  for (let i = 0; i < 8; i++) {
+    x += dx; y += dy;
+    if (!isFloor(w, x, y)) break;
+    path.push([x, y]);
+    const o = objectAt(w, x, y);
+    if (o && !(o.type === 'trap' && !trapVisible(o))) break;
+  }
+  if (!path.length) return;
+  walkPath = path;
+  if (!walkTimer) walkTick();
 }
 
 // ---------- first-run tips ----------
@@ -365,6 +418,9 @@ function renderSide() {
   if (standingOn?.type === 'exit' && !standingOn.guard) {
     action = `<div class="prompt"><p>The way out. Climb back up to the map. You cannot return to this delve.</p>
       <button class="primary" data-act="leaveDelve">Climb out</button></div>`;
+  } else if (standingOn?.type === 'hatch') {
+    action = `<div class="prompt"><p>A trapdoor, a rope still tied to its ring. Below is a lower level: richer, and more dangerous. There is no climbing back up to here, only the way out.</p>
+      <button class="primary" data-act="goLower">Climb down</button></div>`;
   } else if (standingOn?.type === 'up') {
     action = run.oil >= oilMax(run)
       ? '<div class="prompt"><p>Daylight, far above. Your lantern is full, so there is no reason to climb.</p></div>'
@@ -377,7 +433,7 @@ function renderSide() {
     : run.oil < 12 ? 'Your lantern is guttering.' : '';
   side.innerHTML = `
     ${exploreHint()}
-    <h2>${currentNode(run)?.type === 'haunted' ? 'A haunted delve' : 'A delve'}</h2>
+    <h2>${run.world.lower ? 'The level beneath' : currentNode(run)?.type === 'haunted' ? 'A haunted delve' : 'A delve'}</h2>
     <p class="intro">${region.name}. Find the way out at the far end.</p>
     ${run.world.cond ? `<p class="condline"><span class="cond c-${run.world.cond}">${DELVE_CONDITIONS[run.world.cond].glyph}</span><b>${DELVE_CONDITIONS[run.world.cond].name}.</b> ${DELVE_CONDITIONS[run.world.cond].desc}</p>` : ''}
     ${action}
@@ -467,6 +523,28 @@ function interact(obj) {
       run.salvagedHere = false;
       screen = 'bench';
       break;
+    case 'crack':
+      obj.gone = true;
+      standingOn = null;
+      logExplore('You shoulder through the cracked wall. Behind it, a small room nobody was meant to find.');
+      view?.burst(obj.x, obj.y, '#a4987f', 22);
+      view?.float(obj.x, obj.y, 'A hidden room', '#e0b95c');
+      sfx('chest');
+      shake('s');
+      break;
+    case 'trap': {
+      const r = springTrap(run, obj);
+      standingOn = null;
+      logExplore(`${r.name}! ${r.text}`);
+      view?.float(obj.x, obj.y, r.name, '#e7837b');
+      view?.burst(obj.x, obj.y, '#c0392b', 12);
+      sfx('hurt');
+      shake('s');
+      break;
+    }
+    case 'hatch':
+      logExplore('A trapdoor in the floor. Cold air breathes up through the cracks.');
+      break;
     case 'exit':
       if (obj.guard) {
         logExplore(`${ENEMIES[obj.guard].name} stands between you and the way out.`);
@@ -487,10 +565,7 @@ function interact(obj) {
 function startFight(enemies, ctx) {
   fightCtx = { ...ctx, enemies };
   saveNow({ fight: fightResume(fightCtx) });
-  combat = createCombat(run, enemies, Math.random, {
-    hpMult: currentRegion(run).hpMult,
-    paperWear: DELVE_CONDITIONS[run.world?.cond]?.paperWear || 0,
-  });
+  combat = createCombat(run, enemies, Math.random, fightOptions(run, ctx.kind));
   if (combat.paperWear) combat.log.push('The water seeps into everything. Paper cards wear twice as fast here.');
   if (ctx.kind === 'boss') storyAtBoss(combat);
   target = 0;
@@ -723,6 +798,85 @@ function deckOverlay() {
   </div>`;
 }
 
+// ---------- card details (press and hold, or right-click) ----------
+
+function findCard(uid) {
+  if (!run) return null;
+  const piles = [run.deck, combat?.hand, combat?.drawPile, combat?.discard, combat?.exhaust];
+  for (const p of piles) { const k = p?.find(c => c.uid === uid); if (k) return k; }
+  return null;
+}
+
+function cardInfo(k) {
+  const rows = [];
+  if (k.crafted) {
+    rows.push(['Page', `${CARD_MATERIALS[k.cardMat].name}. ${CARD_MATERIALS[k.cardMat].desc}`]);
+    rows.push(['Ink', `${INK_MATERIALS[k.inkMat].name}. ${INK_MATERIALS[k.inkMat].desc}`]);
+  } else rows.push(['Page', k.unplayable ? 'A blot of spilled ink. It cannot be cast.' : 'A starter card. Permanent, and it never reacts.']);
+  rows.push(['Colors', k.colors.map(c => `${INK_COLORS[c].name}: ${INK_COLORS[c].desc.toLowerCase()}`).join('. ')]);
+  if (k.crafted && k.colors.length === 2) {
+    const rx = REACTIONS[[...k.colors].sort().join('+')];
+    rows.push(['Reaction', `Every cast sets off ${rx.name}: ${rx.desc}`]);
+  } else if (k.crafted) {
+    const pairs = Object.entries(REACTIONS).filter(([key]) => key.split('+').includes(k.colors[0]))
+      .map(([key, r]) => `${r.name} after ${INK_COLORS[key.split('+').find(c => c !== k.colors[0])].short.toLowerCase()}`);
+    rows.push(['Reacts', pairs.join(', ')]);
+  }
+  for (const e of k.enchants) rows.push([ENCHANTMENTS[e].name, `${ENCHANTMENTS[e].desc} (from a ${ENCHANTMENTS[e].part})`]);
+  if (k.recipeId) rows.push(['Named spell', RECIPES.find(r => r.id === k.recipeId)?.hint || '']);
+  if (k.crafted) {
+    rows.push(['Wear', Number.isFinite(k.durability) ? `${k.durability} of ${k.maxDurability} casts left.` : 'Permanent.']);
+    rows.push(['Cast', `${k.casts || 0} time${k.casts === 1 ? '' : 's'}${wearName(k) ? `: ${wearName(k)}` : ''}. Well-Worn at 8, an Heirloom at 20.`]);
+  }
+  if (k.signature) rows.push(['Signature', `${SIGS[k.signature].name}. ${SIGS[k.signature].desc}`]);
+  if (combat?.smudged?.has(k.uid)) rows.push(['Smudged', 'Half strength for the rest of this fight.']);
+  return `<div id="cardinfo" class="deckov cardinfo">
+    <div class="deckov-back" data-act="closeInfo"></div>
+    <section class="deckov-panel" role="dialog" aria-modal="true" aria-label="${k.name}">
+      <div class="infogrid">
+        <div class="infocard">${cardHtml(k)}</div>
+        <dl>${rows.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('')}</dl>
+      </div>
+      <button class="primary deckov-close" data-act="closeInfo">Close</button>
+    </section>
+  </div>`;
+}
+
+// Press and hold a card on a touch screen, or right-click it, to read about it.
+let holdTimer = 0, holdFrom = null, swallowClick = false;
+document.addEventListener('pointerdown', e => {
+  // A new press starts fresh: the click from an earlier long press may never have come.
+  swallowClick = false;
+  const el = e.target.closest('.card[data-cid]');
+  if (!el || e.button > 0 || document.getElementById('cardinfo')) return;
+  holdFrom = [e.clientX, e.clientY];
+  clearTimeout(holdTimer);
+  holdTimer = setTimeout(() => {
+    if (!findCard(el.dataset.cid)) return;
+    infoUid = el.dataset.cid;
+    swallowClick = true;
+    navigator.vibrate?.(15);
+    render();
+  }, 450);
+});
+const cancelHold = () => { clearTimeout(holdTimer); holdFrom = null; };
+document.addEventListener('pointerup', cancelHold);
+document.addEventListener('pointercancel', cancelHold);
+document.addEventListener('pointermove', e => {
+  if (holdFrom && Math.hypot(e.clientX - holdFrom[0], e.clientY - holdFrom[1]) > 10) cancelHold();
+});
+// The click that ends a long press must not also cast the card.
+document.addEventListener('click', e => {
+  if (swallowClick) { swallowClick = false; e.stopPropagation(); e.preventDefault(); }
+}, true);
+document.addEventListener('contextmenu', e => {
+  const el = e.target.closest('.card[data-cid]');
+  if (!el || !findCard(el.dataset.cid)) return;
+  e.preventDefault();
+  infoUid = el.dataset.cid;
+  render();
+});
+
 // ---------- fight, rewards, shop, end ----------
 
 const PESTS = new Set(['papermoth', 'inkleech', 'rustwraith']);
@@ -798,8 +952,20 @@ function renderRewards() {
 }
 
 function renderShop() {
-  const oilWare = `<button class="ware oilware" data-act="buyOil" ${run.gold < OIL_WARE.price || run.oil >= oilMax(run) ? 'disabled' : ''} title="+${OIL_WARE.oil} lantern oil">
-      ${portrait('lanterns', 'wareart')}<span>Lantern oil</span><small>+${OIL_WARE.oil} (you have ${run.oil}/${oilMax(run)})</small><b>${OIL_WARE.price} gold</b></button>`;
+  const meeting = merchant.meeting;
+  const m = run.merchant;
+  const favor = m?.favor != null ? MERCHANT.favors[m.favor] : null;
+  const ledger = meeting ? `<div class="panel ledger">
+      <h3 class="panel-title">The merchant's ledger</h3>
+      <p class="merchline">${portrait('merchant', 'merchart')}<span>${meeting.line}</span></p>
+      ${favor ? `<p class="favor"><b>He asks:</b> ${favor.ask} <small>(${favor.n > 1 ? `${favor.n} × ` : ''}${itemName(favor.item)}; you have ${run.inventory[favor.item] || 0})</small></p>
+        <button data-act="deliver" ${canDeliver(run) ? '' : 'disabled'}>Hand it over</button>`
+        : m?.done >= MERCHANT.done.length ? '<p class="note">His ledger is closed. You owe each other nothing.</p>' : ''}
+      ${m?.done ? `<p class="note">Favors done: ${m.done} of ${MERCHANT.done.length}</p>` : ''}
+    </div>` : '';
+  const oilPrice = priceFor(run, OIL_WARE.price);
+  const oilWare = `<button class="ware oilware" data-act="buyOil" ${run.gold < oilPrice || run.oil >= oilMax(run) ? 'disabled' : ''} title="+${OIL_WARE.oil} lantern oil">
+      ${portrait('lanterns', 'wareart')}<span>Lantern oil</span><small>+${OIL_WARE.oil} (you have ${run.oil}/${oilMax(run)})</small><b>${oilPrice} gold</b></button>`;
   const stock = oilWare + merchant.stock.map((s, i) => s.relic
     ? `<button class="ware relicware" data-act="buy" data-idx="${i}" ${s.sold || run.gold < s.price || hasRelic(run, s.relic) ? 'disabled' : ''} title="${RELICS[s.relic].desc}">
       ${portrait(`relic_${s.relic}`, 'wareart')}<span>${RELICS[s.relic].name}</span><small>relic</small><b>${s.sold ? 'Sold' : s.price + ' gold'}</b></button>`
@@ -807,8 +973,8 @@ function renderShop() {
       <span>${itemName(s.id)}</span><small>${INGREDIENTS[s.id].kind === 'raw' ? 'raw material' : INGREDIENTS[s.id].kind === 'enchant' ? ENCHANTMENTS[INGREDIENTS[s.id].key].name : INGREDIENTS[s.id].rarity}</small><b>${s.sold ? 'Sold' : s.price + ' gold'}</b></button>`).join('');
   const worn = run.deck.filter(k => Number.isFinite(k.durability) && k.durability < k.maxDurability);
   const repairs = worn.map(k => cardHtml(k, {
-    action: `data-act="repair" data-uid="${k.uid}"`, disabled: run.gold < REPAIR_PRICE,
-    extra: `<span class="salv">Repair: ${REPAIR_PRICE} gold</span>`,
+    action: `data-act="repair" data-uid="${k.uid}"`, disabled: run.gold < priceFor(run, REPAIR_PRICE),
+    extra: `<span class="salv">Repair: ${priceFor(run, REPAIR_PRICE)} gold</span>`,
   })).join('');
   app.innerHTML = `
   <section class="shop">
@@ -817,6 +983,7 @@ function renderShop() {
       <p>“Ink, pages, the odd whisper bottled in wax. Coin first.”</p>
     </header>
     ${notice ? `<p class="notice ${notice.tone || ''}" role="status">${notice.text}</p>` : ''}
+    ${ledger}
     <div class="panel"><h3 class="panel-title">Wares</h3><div class="wares">${stock}</div></div>
     <div class="panel"><h3 class="panel-title">Repairs</h3>
       ${repairs ? `<div class="cards">${repairs}</div>` : '<p class="none">None of your cards are worn.</p>'}
@@ -862,6 +1029,7 @@ function renderEvent() {
     ${STORY[eventCtx.id] ? '<p class="storytag">Sister Vell</p>' : ''}
     <h2>${ev.name}</h2>
     <p class="lede">${ev.text}</p>
+    ${eventCtx.remark && !r ? `<p class="remark">${eventCtx.remark}</p>` : ''}
     ${body}
   </section>`;
 }
@@ -873,7 +1041,8 @@ function renderEnd(won) {
     <p>${won
       ? 'The first book falls still in your hands. Its pages are blank now, waiting. You could write anything.'
       : `You fell in ${currentRegion(run).name}. Another Inkbinder will find your cards in the dust.`}</p>
-    <p class="note">Cards in deck: ${run.deck.length} · New spells this run: ${meta.grimoire.length - run.startKnown} · Grimoire: ${meta.grimoire.length} of ${RECIPES.length}</p>
+    <p class="note">${run.daily ? `Daily descent ${run.daily} · ` : ''}${run.depth ? `Depth ${run.depth} · ` : ''}Cards in deck: ${run.deck.length} · New spells this run: ${meta.grimoire.length - run.startKnown} · Grimoire: ${meta.grimoire.length} of ${RECIPES.length}</p>
+    ${endNews ? `<p class="notice rare">${endNews}</p>` : ''}
     <button class="primary" data-act="restart">Begin a new run</button>
   </section>`;
 }
@@ -904,6 +1073,10 @@ function render() {
   document.getElementById('deckov')?.remove();
   if (deckOpen && run && !['title', 'codex', 'won', 'lost'].includes(screen)) document.body.insertAdjacentHTML('beforeend', deckOverlay());
   else deckOpen = false;
+  document.getElementById('cardinfo')?.remove();
+  const info = infoUid && findCard(infoUid);
+  if (info) document.body.insertAdjacentHTML('beforeend', cardInfo(info));
+  else infoUid = null;
   autosave();
 }
 
@@ -940,7 +1113,7 @@ function afterCombatAction() {
   if (obj?.type === 'exit') obj.guard = null;   // the way out stays, now open
   else if (obj && 'row' in obj) obj.cleared = true; // a node on the map
   else if (obj) obj.gone = true;
-  rewards = rollRewards(fightCtx.enemies, { elite: big, dice: hasRelic(run, 'dice') });
+  rewards = rollRewards(fightCtx.enemies, { elite: big, dice: hasRelic(run, 'dice'), run });
   if (big) rewards.relicChoices = relicChoices(run, 3);
   rewards.salvaged = combat.salvaged;
   applyRewards(run, rewards);
@@ -965,7 +1138,9 @@ function openNode(node) {
       screen = 'explore';
       break;
     case 'shop':
-      merchant = node; screen = 'shop';
+      merchant = node;
+      node.meeting ||= meetMerchant(run);
+      screen = 'shop';
       break;
     case 'camp':
       desk = node; blueprint = emptyBlueprint(); benchTab = 'inscribe'; salvageMode = false;
@@ -974,7 +1149,7 @@ function openNode(node) {
       break;
     case 'event':
     case 'story':
-      eventCtx = { obj: node, id: o.event, result: null };
+      eventCtx = { obj: node, id: o.event, result: null, remark: o.type === 'story' && o.event !== 'vell4_hollow' ? vellRemark(run) : null };
       sfx('event');
       screen = 'event';
       break;
@@ -1003,9 +1178,42 @@ function nextAct() {
   screen = 'map';
 }
 
+// The same seed for everyone on a given (UTC) day.
+const todayUTC = () => new Date().toISOString().slice(0, 10);
+function dailySeed(date) {
+  let h = 2166136261;
+  for (const ch of `spellcrafter:${date}`) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return h >>> 0;
+}
+
+function startRun(r) {
+  clearRun();
+  run = r;
+  saveMeta(meta);
+  run.startKnown = meta.grimoire.length;
+  startAmbient(0);
+  sfx('descend');
+  exploreLog = [];
+  mapNote = 'You light your lantern at the chapel gate. Below you, the ruins branch in every direction.';
+  standingOn = null;
+  endNews = null;
+  screen = 'map';
+}
+
 function endRun(won) {
   clearRun();
-  recordRun(meta, { won, depth: run.regionIdx });
+  const r = recordRun(meta, { won, depth: run.regionIdx, level: run.depth || 0, maxLevel: DEPTHS.length });
+  const news = [];
+  if (r.unlocked) news.push(`Depth ${r.unlocked} is open: ${DEPTHS[r.unlocked - 1].name}. ${DEPTHS[r.unlocked - 1].desc}`);
+  for (const u of unlocksBetween(run.unlockCount ?? 0, meta.grimoire.length)) {
+    news.push(`Unlocked for your next runs: ${u.kind === 'relic' ? `the ${RELICS[u.id].name}` : `the ${ENCHANTMENTS[u.id].part} (${ENCHANTMENTS[u.id].name})`}.`);
+  }
+  if (run.daily && meta.daily?.date !== run.daily) {
+    meta.daily = { date: run.daily, won, act: run.regionIdx };
+    saveMeta(meta);
+  }
+  endNews = news.length ? news.join('<br>') : null;
+  if (r.unlocked) selectedDepth = r.unlocked;
   stopAmbient();
   sfx(won ? 'win' : 'lose');
   screen = won ? 'won' : 'lost';
@@ -1020,18 +1228,34 @@ const actions = {
   begin() {
     if (loadRunText() && !abandonArmed) { abandonArmed = true; return; }
     abandonArmed = false;
-    clearRun();
-    run = createRun(undefined, meta.grimoire, selectedVariant);
     meta.lastVariant = selectedVariant;
-    saveMeta(meta);
-    run.startKnown = meta.grimoire.length;
-    startAmbient(0);
-    sfx('descend');
-    exploreLog = [];
-    mapNote = 'You light your lantern at the chapel gate. Below you, the ruins branch in every direction.';
-    standingOn = null;
-    screen = 'map';
+    meta.lastDepth = selectedDepth;
+    startRun(createRun(undefined, meta.grimoire, selectedVariant, selectedDepth));
   },
+  daily() {
+    if (loadRunText() && !abandonArmed) { abandonArmed = true; return; }
+    abandonArmed = false;
+    const date = todayUTC();
+    const r = createRun(dailySeed(date), meta.grimoire, 'inkbinder', 0);
+    r.daily = date;
+    startRun(r);
+    mapNote = `The daily descent for ${date}. Everyone who goes down today finds the same chapel.`;
+  },
+  goLower() {
+    const r = enterLower(run);
+    if (r.error) return;
+    walkPath = null;
+    sfx('descend');
+    exploreLog = ['You lower yourself through the trapdoor. The rope will not take you back up.'];
+    standingOn = null;
+  },
+  deliver() {
+    const r = deliverFavor(run);
+    if (r.error) { notice = { text: r.error, tone: 'warn' }; return; }
+    sfx(r.relic ? 'relic' : 'pickup');
+    notice = { text: `${r.text}${r.relic ? ` You receive the ${RELICS[r.relic].name}: ${RELICS[r.relic].desc}` : ''}`, tone: 'rare' };
+  },
+  closeInfo() { infoUid = null; },
   restart() { run = null; forgetArmed = false; abandonArmed = false; stopAmbient(); screen = 'title'; },
   continue() {
     let loaded;
@@ -1109,6 +1333,7 @@ const actions = {
   hintOk({ id }) { meta.hints ||= { seen: [], off: false }; meta.hints.seen.push(id); saveMeta(meta); },
   hintsOff() { meta.hints ||= { seen: [], off: false }; meta.hints.off = true; saveMeta(meta); },
   pickVariant({ id }) { if (isUnlocked(meta, id)) { selectedVariant = id; sfx('click'); } },
+  pickDepth({ n }) { if (+n <= (meta.depthUnlocked || 0)) { selectedDepth = +n; sfx('click'); } },
   forget() {
     if (!forgetArmed) { forgetArmed = true; return; }
     meta = forget();
@@ -1248,8 +1473,8 @@ const actions = {
   },
   repair({ uid }) {
     const k = run.deck.find(c => c.uid === uid);
-    if (!k || run.gold < REPAIR_PRICE) return;
-    run.gold -= REPAIR_PRICE;
+    if (!k || run.gold < priceFor(run, REPAIR_PRICE)) return;
+    run.gold -= priceFor(run, REPAIR_PRICE);
     k.durability = k.maxDurability;
     notice = { text: `${k.name} is restored.` };
   },
@@ -1411,6 +1636,10 @@ const KEYS = {
 document.addEventListener('keydown', e => {
   unlock();
   if (e.target.closest('input,textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (infoUid) {
+    if (e.key === 'Escape') { infoUid = null; render(); }
+    return;
+  }
   if (deckOpen) {
     if (e.key === 'Escape') { deckOpen = false; render(); }
     return;
@@ -1435,6 +1664,6 @@ document.addEventListener('keydown', e => {
 });
 
 // exposed for debugging in the console
-window.spellcrafter = { get run() { return run; }, get combat() { return combat; }, get screen() { return screen; }, walkTo, BLOCKING, availableNodes, startFight };
+window.spellcrafter = { get run() { return run; }, get combat() { return combat; }, get screen() { return screen; }, walkTo, BLOCKING, availableNodes, startFight, openNode, render };
 
 render();
